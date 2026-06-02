@@ -1,4 +1,4 @@
-const STORAGE_KEY = "aiCourseProgressV16";
+const STORAGE_KEY = "aiCourseProgressV19";
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
 
 const modules = [
@@ -1240,6 +1240,8 @@ function rotateQuestionOptions(question, seed) {
 const state = loadState();
 let currentView = "module";
 let currentModuleIndex = 0;
+let statusMonitorStarted = false;
+let statusCheckInFlight = null;
 
 const contentView = document.getElementById("contentView");
 const moduleNav = document.getElementById("moduleNav");
@@ -1250,20 +1252,26 @@ const progressText = document.getElementById("progressText");
 const progressFill = document.getElementById("progressFill");
 const toast = document.getElementById("toast");
 
-["libraryButton", "topLibraryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", renderLibrary));
-["finalButton", "topFinalButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", renderFinalTest));
+["libraryButton", "topLibraryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderLibrary()));
+["finalButton", "topFinalButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderFinalTest()));
 ["resetButton", "topResetButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", resetProgress));
 
-renderNav();
-renderObjectives();
-renderParticipantForm();
-renderRoadmap();
-if (isAuthenticated()) {
-  renderModule(0);
-} else {
-  renderAuthRequired();
+initializeCourse();
+
+function initializeCourse() {
+  renderNav();
+  renderObjectives();
+  renderParticipantForm();
+  renderRoadmap();
+  if (isAuthenticated()) {
+    renderModule(0);
+    verifyParticipantAccess({ silent: true });
+    startAccessMonitor();
+  } else {
+    renderAuthRequired();
+  }
+  updateProgress();
 }
-updateProgress();
 
 function loadState() {
   const fallback = {
@@ -1300,16 +1308,94 @@ function requireAuth() {
   return false;
 }
 
+async function requireActiveParticipant() {
+  if (!requireAuth()) return false;
+  return verifyParticipantAccess({ silent: true });
+}
+
+async function verifyParticipantAccess({ silent = false } = {}) {
+  if (!isAuthenticated()) return false;
+  if (statusCheckInFlight) return statusCheckInFlight;
+
+  statusCheckInFlight = (async () => {
+    try {
+      const response = await requestAuth("login", {
+        name: state.participant.name,
+        department: state.participant.department || "",
+        passwordHash: state.participant.passwordHash
+      });
+
+      if (!response.ok) {
+        lockParticipant(response.error || "Доступ отключен владельцем курса.");
+        return false;
+      }
+
+      state.participant = {
+        ...state.participant,
+        department: response.department || state.participant.department || "",
+        userStatus: response.status || "active"
+      };
+      state.authStatus = "доступ активен";
+      saveState();
+      if (!silent) renderParticipantForm();
+      return true;
+    } catch {
+      if (!silent) showToast("Не удалось проверить статус пользователя. Продолжаем без блокировки.");
+      return true;
+    } finally {
+      statusCheckInFlight = null;
+    }
+  })();
+
+  return statusCheckInFlight;
+}
+
+function startAccessMonitor() {
+  if (statusMonitorStarted) return;
+  statusMonitorStarted = true;
+  window.setInterval(() => {
+    if (isAuthenticated()) verifyParticipantAccess({ silent: true });
+  }, 60000);
+  window.addEventListener("focus", () => {
+    if (isAuthenticated()) verifyParticipantAccess({ silent: true });
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && isAuthenticated()) verifyParticipantAccess({ silent: true });
+  });
+}
+
+function lockParticipant(message) {
+  state.participant = {
+    ...state.participant,
+    passwordHash: "",
+    authenticated: false,
+    userStatus: "blocked"
+  };
+  state.authStatus = message || "Доступ отключен владельцем курса.";
+  saveState();
+  renderParticipantForm();
+  renderAuthRequired();
+  updateProgress();
+  showToast(state.authStatus);
+}
+
 function renderAuthRequired() {
+  const accessDisabled = /отключ|blocked|deleted|заблок|удален|удалён/i.test(state.authStatus || "");
   currentView = "locked";
   contentView.innerHTML = `
     <section class="section-band auth-required">
-      <p class="eyebrow">Доступ к курсу</p>
-      <h2>Регистрация обязательна</h2>
-      <p>Чтобы открыть блоки, библиотеку промптов, практические задания и итоговый тест, участник должен зарегистрироваться или войти по ФИО и паролю.</p>
-      <p>Это нужно, чтобы результаты, открытые ответы и практические задания корректно попали в вашу таблицу и были привязаны к конкретному человеку.</p>
-      <p class="submit-hint">Если блоки не открываются, это не ошибка сайта: доступ закрыт до регистрации участника.</p>
-      <button class="primary-button" type="button" id="goAuthButton">Перейти к регистрации</button>
+      <p class="eyebrow">${accessDisabled ? "Доступ отключен" : "Доступ к курсу"}</p>
+      <h2>${accessDisabled ? "Учетная запись отключена" : "Регистрация обязательна"}</h2>
+      <p>${accessDisabled
+        ? "Владелец курса отключил эту учетную запись в листе «Пользователи». Для продолжения обратитесь к организатору курса."
+        : "Чтобы открыть блоки, библиотеку промптов, практические задания и итоговый тест, участник должен зарегистрироваться или войти по ФИО и паролю."}</p>
+      <p>${accessDisabled
+        ? `Текущий статус: ${escapeHtml(state.authStatus || "доступ отключен")}`
+        : "Это нужно, чтобы результаты, открытые ответы и практические задания корректно попали в вашу таблицу и были привязаны к конкретному человеку."}</p>
+      <p class="submit-hint">${accessDisabled
+        ? "Если статус изменен на active, участник сможет снова войти по ФИО и паролю."
+        : "Если блоки не открываются, это не ошибка сайта: доступ закрыт до регистрации участника."}</p>
+      <button class="primary-button" type="button" id="goAuthButton">${accessDisabled ? "Перейти к входу" : "Перейти к регистрации"}</button>
     </section>
   `;
   document.getElementById("goAuthButton")?.addEventListener("click", () => {
@@ -1334,8 +1420,8 @@ function renderNav() {
   }).join("");
 
   moduleNav.querySelectorAll("[data-module]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!requireAuth()) return;
+    button.addEventListener("click", async () => {
+      if (!(await requireActiveParticipant())) return;
       renderModule(Number(button.dataset.module));
     });
   });
@@ -1359,11 +1445,11 @@ function renderObjectives() {
   }).join("");
 
   objectiveList.querySelectorAll("[data-objective]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const objective = learningObjectives.find((item) => item.id === button.dataset.objective);
       const firstUnfinished = objective.modules.find((id) => !state.modules[id]?.submitted) || objective.modules[0];
       const index = modules.findIndex((module) => module.id === firstUnfinished);
-      if (!requireAuth()) return;
+      if (!(await requireActiveParticipant())) return;
       if (index >= 0) renderModule(index);
     });
   });
@@ -1498,6 +1584,7 @@ async function authenticateParticipant(mode) {
     saveState();
     renderParticipantForm();
     renderRoadmap();
+    startAccessMonitor();
     renderModule(0);
     showToast(state.authStatus);
   } catch (error) {
@@ -1650,8 +1737,8 @@ function renderRoadmap() {
   `;
 
   roadmapView.querySelectorAll("[data-roadmap]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!requireAuth()) return;
+    button.addEventListener("click", async () => {
+      if (!(await requireActiveParticipant())) return;
       renderModule(Number(button.dataset.roadmap));
     });
   });
@@ -1780,7 +1867,8 @@ function renderModule(index) {
 
   bindQuestionEvents(module.id);
   document.getElementById("submitModule").addEventListener("click", () => submitModule(module));
-  document.getElementById("nextModule").addEventListener("click", () => {
+  document.getElementById("nextModule").addEventListener("click", async () => {
+    if (!(await requireActiveParticipant())) return;
     if (index === modules.length - 1) {
       renderFinalTest();
     } else {
@@ -1978,7 +2066,8 @@ function bindQuestionEvents(moduleId) {
   });
 }
 
-function submitModule(module) {
+async function submitModule(module) {
+  if (!(await requireActiveParticipant())) return;
   const moduleState = state.modules[module.id] || { answers: {}, submitted: false };
   const answered = Object.keys(moduleState.answers).length;
   if (answered < module.quiz.length) {
@@ -2010,8 +2099,8 @@ function renderModuleResult(module, moduleState) {
   `;
 }
 
-function renderLibrary() {
-  if (!requireAuth()) return;
+async function renderLibrary() {
+  if (!(await requireActiveParticipant())) return;
   currentView = "library";
   contentView.innerHTML = `
     <section class="section-band">
@@ -2060,8 +2149,8 @@ function renderLibrary() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function renderFinalTest() {
-  if (!requireAuth()) return;
+async function renderFinalTest() {
+  if (!(await requireActiveParticipant())) return;
   currentView = "final";
   const finalSubmitted = state.finalSubmitted;
 
@@ -2125,7 +2214,8 @@ function renderFinalQuestion(question, index, submitted) {
   `;
 }
 
-function submitFinal() {
+async function submitFinal() {
+  if (!(await requireActiveParticipant())) return;
   if (Object.keys(state.finalAnswers).length < finalQuestions.length) {
     showToast("Ответьте на все вопросы итогового теста.");
     return;
@@ -2269,6 +2359,7 @@ async function submitResults() {
     showToast("Сначала пройдите итоговый тест.");
     return;
   }
+  if (!(await requireActiveParticipant())) return;
   if (!validateParticipant()) return;
   const payload = buildResultsPayload();
 
