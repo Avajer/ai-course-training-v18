@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ИИ для сотрудников - профессиональный курс</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=18">
+</head>
+<body class="tpl-course-module">
+  <div class="deck app-shell">
+    <aside class="sidebar objective-rail" aria-label="Цели и навигация курса">
+      <div class="brand">ИИ-практикум</div>
+      <h5>Цели курса</h5>
+      <p class="rail-hint">Нажмите на цель, чтобы перейти к связанным блокам.</p>
+      <ul id="objectiveList" class="obj-list"></ul>
+
+      <h5>Прогресс</h5>
+      <div class="progress-panel">
+        <div class="progress-top">
+          <span>Курс пройден</span>
+          <strong id="progressText">0%</strong>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <h5>Блоки курса</h5>
+      <nav id="moduleNav" class="module-nav"></nav>
+
+      <div class="sidebar-actions">
+        <button id="libraryButton" class="secondary-button" type="button">Библиотека промптов</button>
+        <button id="finalButton" class="secondary-button" type="button">Итоговый тест</button>
+        <button id="resetButton" class="ghost-button" type="button">Сбросить прогресс</button>
+      </div>
+    </aside>
+
+    <main class="main course-main">
+      <section class="slide full hero-slide is-active" aria-label="Старт курса">
+        <p class="kicker">Начальный уровень · для сотрудников</p>
+        <h1 class="h1 mt-s">ИИ для работы:<br><em>от первого запроса до проверенного результата</em></h1>
+        <p class="lede mt-l">Профессиональный интерактивный курс: глубокая теория, рабочие примеры, визуальные схемы, задания, мини-тесты, практическая рефлексия, итоговая диагностика и рекомендации по слабым зонам.</p>
+        <div class="course-meta row mt-l" aria-label="Параметры курса">
+          <span class="pill-academic">14 блоков</span>
+          <span class="pill-academic">56 вопросов в мини-тестах</span>
+          <span class="pill-academic">практическая рефлексия</span>
+          <span class="pill-academic">итоговая диагностика</span>
+          <span class="pill-academic">шаблоны промптов</span>
+        </div>
+        <aside class="notes">
+          Вступление ведущего: подчеркнуть, что курс не про магию ИИ, а про управляемый рабочий процесс - задача, промпт, проверка, применение.
+        </aside>
+      </section>
+
+      <div class="top-actions" aria-label="Быстрые действия курса">
+        <button id="topLibraryButton" class="secondary-button" type="button">Библиотека промптов</button>
+        <button id="topFinalButton" class="secondary-button" type="button">Итоговый тест</button>
+        <button id="topResetButton" class="ghost-button" type="button">Сбросить прогресс</button>
+      </div>
+
+      <section id="participantView" class="participant-card" aria-label="Данные участника"></section>
+
+      <section id="roadmapView" class="course-roadmap" aria-label="Карта прохождения курса"></section>
+
+      <section id="contentView" class="content-view slide" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="script.js?v=18"></script>
+</body>
+</html>
