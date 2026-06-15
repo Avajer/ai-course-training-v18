@@ -1,5 +1,5 @@
 /* ИИ-практикум — service worker (офлайн-кэш для GitHub Pages) */
-const CACHE = "ai-course-v25";
+const CACHE = "ai-course-v26";
 
 /* Базовые файлы курса. Пути относительные — работают и на github.io/<repo>/ */
 const CORE = [
