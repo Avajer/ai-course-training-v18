@@ -9,7 +9,7 @@
 (function () {
   "use strict";
 
-  var COURSE_VERSION = "v28";
+  var COURSE_VERSION = "v29";
   var LS = {
     settings: "aiCourseSandboxSettings",
     mylib: "aiCourseMyPrompts",
@@ -28,6 +28,15 @@
   function toast(m) { if (typeof window.showToast === "function") window.showToast(m); }
   function lsGet(k, fb) { try { var v = localStorage.getItem(k); return v == null ? fb : JSON.parse(v); } catch (e) { return fb; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  // Ключ, привязанный к текущему участнику: библиотека, резюме и диагностика
+  // хранятся отдельно для каждого пользователя и не «перетекают» между людьми.
+  function uKey(base) {
+    try {
+      var st = getState();
+      var id = st && st.participant && st.participant.passwordHash ? st.participant.passwordHash : "";
+      return id ? base + "::" + id : base;
+    } catch (e) { return base; }
+  }
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function elFrom(html) { var t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; }
@@ -267,11 +276,11 @@
   function saveToMyLib(text, title) {
     text = (text || "").trim();
     if (!text) { toast("Сначала напишите промпт."); return; }
-    var lib = lsGet(LS.mylib, []);
+    var lib = lsGet(uKey(LS.mylib), []);
     var t = title || prompt("Название промпта:", text.slice(0, 40));
     if (t === null) return;
     lib.unshift({ id: Date.now(), title: t || "Без названия", text: text, ts: new Date().toISOString() });
-    lsSet(LS.mylib, lib);
+    lsSet(uKey(LS.mylib), lib);
     toast("Промпт сохранён в личную библиотеку.");
   }
   function openMyLib() {
@@ -292,7 +301,7 @@
         $("#mlFile", root).addEventListener("change", function (e) { importMyLib(e.target.files[0], function () { renderMyLibList($("#mlList", root)); }); });
         root.addEventListener("click", function (e) {
           var del = e.target.closest("[data-ml-del]"); var cp = e.target.closest("[data-ml-copy]"); var snd = e.target.closest("[data-ml-send]");
-          if (del) { var lib = lsGet(LS.mylib, []).filter(function (p) { return String(p.id) !== del.getAttribute("data-ml-del"); }); lsSet(LS.mylib, lib); renderMyLibList($("#mlList", root)); }
+          if (del) { var lib = lsGet(uKey(LS.mylib), []).filter(function (p) { return String(p.id) !== del.getAttribute("data-ml-del"); }); lsSet(uKey(LS.mylib), lib); renderMyLibList($("#mlList", root)); }
           if (cp) { copyText(cp.getAttribute("data-text")); toast("Скопировано."); }
           if (snd) { closePanel(); openSandbox(snd.getAttribute("data-text")); }
         });
@@ -300,7 +309,7 @@
     });
   }
   function renderMyLibList(host) {
-    var lib = lsGet(LS.mylib, []);
+    var lib = lsGet(uKey(LS.mylib), []);
     if (!lib.length) { host.innerHTML = '<div class="feat-mylib-empty">Пока пусто. Сохраняйте удачные промпты из песочницы или из готовой библиотеки.</div>'; return; }
     host.innerHTML = lib.map(function (p) {
       var safe = esc(p.text);
@@ -314,7 +323,7 @@
     }).join("");
   }
   function exportMyLib() {
-    var lib = lsGet(LS.mylib, []);
+    var lib = lsGet(uKey(LS.mylib), []);
     if (!lib.length) { toast("Библиотека пуста."); return; }
     var blob = new Blob([JSON.stringify(lib, null, 2)], { type: "application/json" });
     var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "moi-prompty.json"; a.click();
@@ -327,9 +336,9 @@
       try {
         var arr = JSON.parse(r.result);
         if (!Array.isArray(arr)) throw new Error("bad");
-        var lib = lsGet(LS.mylib, []);
+        var lib = lsGet(uKey(LS.mylib), []);
         arr.forEach(function (p) { if (p && p.text) lib.unshift({ id: Date.now() + Math.random(), title: p.title || "Импорт", text: String(p.text), ts: p.ts || new Date().toISOString() }); });
-        lsSet(LS.mylib, lib); toast("Импортировано: " + arr.length); done && done();
+        lsSet(uKey(LS.mylib), lib); toast("Импортировано: " + arr.length); done && done();
       } catch (e) { toast("Не удалось прочитать файл."); }
     };
     r.readAsText(file);
@@ -476,7 +485,7 @@
         $("#ptDone", root).addEventListener("click", function () {
           var correct = 0, weak = {};
           PRETEST.forEach(function (q, i) { if (answers[i] === q.a) correct++; else weak[q.topic] = (weak[q.topic] || 0) + 1; });
-          lsSet(LS.pretest, true);
+          lsSet(uKey(LS.pretest), true);
           var pct = Math.round((correct / PRETEST.length) * 100);
           var weakTopic = Object.keys(weak).sort(function (a, b) { return weak[b] - weak[a]; })[0];
           var startId = correct >= 5 ? "formula" : (weakTopic && TOPIC_TO_MODULE[weakTopic]) || "intro";
@@ -756,7 +765,7 @@
     var mods = getModules(), st = getState(); if (!mods.length || !st) return -1;
     var firstIncomplete = mods.findIndex(function (m) { return !(st.modules[m.id] && st.modules[m.id].submitted); });
     if (firstIncomplete >= 0) return firstIncomplete;
-    var last = lsGet(LS.lastModule, 0);
+    var last = lsGet(uKey(LS.lastModule), 0);
     return Math.min(mods.length - 1, Math.max(0, last));
   }
   function updateResume() {
@@ -848,7 +857,7 @@
       renderModule = function (index) {
         var r = _rm.apply(this, arguments);
         try {
-          lsSet(LS.lastModule, index);
+          lsSet(uKey(LS.lastModule), index);
           injectTrainerIntoModule(index);
           updateResume();
         } catch (e) { console.error(e); }

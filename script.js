@@ -1,5 +1,68 @@
-const STORAGE_KEY = "aiCourseProgressV19";
+const STORAGE_KEY = "aiCourseProgressV19";          // старый общий блок (только для разовой миграции)
+const SESSION_KEY = "aiCourseSessionV26";           // кто сейчас вошёл (участник + статус)
+const PROGRESS_PREFIX = "aiCourseProgressV26::";    // прогресс отдельно для каждого участника
+const PROGRESS_FIELDS = ["modules", "moduleSync", "finalAnswers", "practice", "openAnswers", "checks", "finalSubmitted", "resultStatus"];
 const THEME_KEY = "aiCourseTheme";
+
+function blankProgress() {
+  return {
+    modules: {},
+    moduleSync: {},
+    finalAnswers: {},
+    practice: {},
+    openAnswers: {},
+    checks: {},
+    finalSubmitted: false,
+    resultStatus: "не отправлено"
+  };
+}
+
+// Ключ хранения прогресса конкретного участника (по хэшу учётной записи).
+function progressKeyFor(participant) {
+  const id = participant?.passwordHash || "";
+  return id ? PROGRESS_PREFIX + id : "";
+}
+
+function isAuthedParticipant(participant) {
+  return Boolean(participant?.authenticated && participant?.passwordHash);
+}
+
+// Загружает сохранённый прогресс участника (или пустой, если его ещё нет).
+function loadProgressFor(participant) {
+  const key = progressKeyFor(participant);
+  if (!key) return blankProgress();
+  try {
+    return { ...blankProgress(), ...JSON.parse(localStorage.getItem(key) || "{}") };
+  } catch {
+    return blankProgress();
+  }
+}
+
+// Разовая миграция старого общего блока: прогресс уходит под ключ его участника,
+// а сам общий блок удаляется, чтобы прогресс больше не «перетекал» между людьми.
+function migrateLegacyState(session) {
+  let raw = null;
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch { return; }
+  if (!raw) return;
+  try {
+    const legacy = JSON.parse(raw);
+    if (isAuthedParticipant(legacy.participant)) {
+      const key = progressKeyFor(legacy.participant);
+      if (key && !localStorage.getItem(key)) {
+        const progress = blankProgress();
+        PROGRESS_FIELDS.forEach((field) => {
+          if (legacy[field] !== undefined) progress[field] = legacy[field];
+        });
+        localStorage.setItem(key, JSON.stringify(progress));
+      }
+      if (!isAuthedParticipant(session.participant)) {
+        session.participant = legacy.participant;
+        session.authStatus = legacy.authStatus || session.authStatus;
+      }
+    }
+  } catch {}
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -19,7 +82,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v28";
+const COURSE_BUILD = "v29";
 
 const modules = [
   {
@@ -2288,6 +2351,7 @@ const moduleNav = document.getElementById("moduleNav");
 const objectiveList = document.getElementById("objectiveList");
 const roadmapView = document.getElementById("roadmapView");
 const participantView = document.getElementById("participantView");
+const resultsOverview = document.getElementById("resultsOverview");
 const progressText = document.getElementById("progressText");
 const progressFill = document.getElementById("progressFill");
 const toast = document.getElementById("toast");
@@ -2307,6 +2371,7 @@ function initializeCourse() {
   renderNav();
   renderObjectives();
   renderParticipantForm();
+  renderResultsOverview();
   renderRoadmap();
   renderAccountStatus();
   if (isAuthenticated()) {
@@ -2321,27 +2386,52 @@ function initializeCourse() {
 }
 
 function loadState() {
-  const fallback = {
-    modules: {},
-    moduleSync: {},
-    finalAnswers: {},
-    practice: {},
-    openAnswers: {},
-    checks: {},
+  const fallbackSession = {
     participant: { name: "", department: "", passwordHash: "", authenticated: false, authMode: "" },
-    authStatus: "не выполнен вход",
-    resultStatus: "не отправлено",
-    finalSubmitted: false
+    authStatus: "не выполнен вход"
   };
+
+  let session;
   try {
-    return { ...fallback, ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") };
+    session = { ...fallbackSession, ...JSON.parse(localStorage.getItem(SESSION_KEY) || "{}") };
   } catch {
-    return fallback;
+    session = { ...fallbackSession };
   }
+
+  // Разовый перенос старого общего блока (если он остался от предыдущей версии).
+  migrateLegacyState(session);
+
+  // Прогресс берём из персонального хранилища участника, а не из общего блока.
+  const progress = isAuthedParticipant(session.participant)
+    ? loadProgressFor(session.participant)
+    : blankProgress();
+
+  return { ...session, ...progress };
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Сессия (кто вошёл) — общий ключ.
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      participant: state.participant,
+      authStatus: state.authStatus
+    }));
+  } catch {}
+
+  // Прогресс — отдельный ключ для каждого участника. Пишем только когда вход выполнен,
+  // иначе анонимный ввод не оставит следов и не «прилипнет» к следующему пользователю.
+  if (isAuthedParticipant(state.participant)) {
+    const key = progressKeyFor(state.participant);
+    const progress = {};
+    PROGRESS_FIELDS.forEach((field) => { progress[field] = state[field]; });
+    try { localStorage.setItem(key, JSON.stringify(progress)); } catch {}
+  }
+}
+
+// Подменяет прогресс в памяти на прогресс указанного участника (используется при входе/выходе).
+function applyProgress(progress) {
+  const next = progress || blankProgress();
+  PROGRESS_FIELDS.forEach((field) => { state[field] = next[field]; });
 }
 
 function isAuthenticated() {
@@ -2425,6 +2515,9 @@ function startAccessMonitor() {
 }
 
 function lockParticipant(message) {
+  // Сохраняем прогресс участника под его ключом, прежде чем закрыть доступ —
+  // при повторном включении он восстановится после входа.
+  saveState();
   state.participant = {
     ...state.participant,
     passwordHash: "",
@@ -2432,8 +2525,12 @@ function lockParticipant(message) {
     userStatus: "blocked"
   };
   state.authStatus = message || "Доступ отключен владельцем курса.";
+  applyProgress(blankProgress());
   saveState();
   renderParticipantForm();
+  renderNav();
+  renderObjectives();
+  renderRoadmap();
   renderAuthRequired();
   updateProgress();
   showToast(state.authStatus);
@@ -2463,6 +2560,7 @@ function renderAuthRequired() {
   });
   renderNav();
   renderObjectives();
+  renderResultsOverview();
   renderRoadmap();
   prepareAnimations(contentView);
 }
@@ -2627,6 +2725,125 @@ function renderParticipantForm() {
   document.getElementById("registerButton").addEventListener("click", () => authenticateParticipant("register"));
 }
 
+function renderResultsOverview() {
+  if (!resultsOverview) return;
+
+  if (!isAuthenticated()) {
+    resultsOverview.innerHTML = `
+      <div class="section-band results-empty">
+        <div>
+          <p class="eyebrow">Результаты участника</p>
+          <h2>Сводка появится после входа</h2>
+          <p>Здесь отображаются мини-тесты по блокам, сохраненные практические задания, открытые ответы и статус итоговой диагностики.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const moduleRows = modules.map((module) => {
+    const moduleState = state.modules[module.id] || {};
+    const practiceAnswer = (state.practice?.[module.id] || "").trim();
+    const openTotal = (module.openQuestions || []).length;
+    const openAnswered = (module.openQuestions || []).reduce((count, _question, index) => {
+      const key = `${module.id}:${index}`;
+      return count + ((state.openAnswers?.[key] || "").trim() ? 1 : 0);
+    }, 0);
+    return {
+      id: module.id,
+      title: module.title,
+      submitted: Boolean(moduleState.submitted),
+      score: moduleState.submitted ? `${moduleState.score}/${module.quiz.length}` : "не пройден",
+      percent: moduleState.submitted ? Math.round((moduleState.score / module.quiz.length) * 100) : null,
+      practiceAnswered: Boolean(practiceAnswer),
+      openAnswered,
+      openTotal,
+      syncStatus: state.moduleSync?.[module.id] || "не отправлено"
+    };
+  });
+
+  const completedModules = moduleRows.filter((row) => row.submitted);
+  const averageMiniScore = completedModules.length
+    ? Math.round(completedModules.reduce((sum, row) => sum + (row.percent || 0), 0) / completedModules.length)
+    : 0;
+  const practiceAnswered = moduleRows.filter((row) => row.practiceAnswered).length;
+  const totalOpenAnswered = moduleRows.reduce((sum, row) => sum + row.openAnswered, 0);
+  const totalOpenQuestions = moduleRows.reduce((sum, row) => sum + row.openTotal, 0);
+  const finalScore = state.finalSubmitted ? buildResultsPayload().score : null;
+  const syncIssue = [
+    ...Object.values(state.moduleSync || {}),
+    state.resultStatus || ""
+  ].find((item) => /ошибка|старой версии|не найден|пароля|связи/i.test(String(item)));
+  const syncIssueText = /старой версии/i.test(String(syncIssue || ""))
+    ? "Google Apps Script опубликован в старой версии. Сайт уже обновлен, но для отправки мини-тестов, практики, открытых ответов и итоговой диагностики нужно заново опубликовать скрипт Google."
+    : syncIssue;
+
+  resultsOverview.innerHTML = `
+    <div class="section-band results-shell">
+      <div class="section-title-row">
+        <div>
+          <p class="eyebrow">Результаты участника</p>
+          <h2>Прогресс, ответы и статус отправки</h2>
+        </div>
+        <span class="tag">${escapeHtml(state.participant.name || "Участник")}</span>
+      </div>
+      ${syncIssue ? `<p class="submit-hint results-warning">Внимание: ${escapeHtml(syncIssueText)}.</p>` : ""}
+      <div class="results-cards">
+        <article class="results-card">
+          <strong>${completedModules.length}/${modules.length}</strong>
+          <span>мини-тестов пройдено</span>
+          <small>Средний результат: ${averageMiniScore}%</small>
+        </article>
+        <article class="results-card">
+          <strong>${practiceAnswered}/${modules.length}</strong>
+          <span>практических ответов сохранено</span>
+          <small>По одному ответу на каждый блок</small>
+        </article>
+        <article class="results-card">
+          <strong>${totalOpenAnswered}/${totalOpenQuestions}</strong>
+          <span>открытых ответов заполнено</span>
+          <small>Рефлексия по рабочим ситуациям</small>
+        </article>
+        <article class="results-card">
+          <strong>${finalScore ? `${finalScore.percent}%` : "не начат"}</strong>
+          <span>итоговый тест</span>
+          <small>${escapeHtml(state.resultStatus || "не отправлено")}</small>
+        </article>
+      </div>
+      <div class="results-table-wrap">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Блок</th>
+              <th>Мини-тест</th>
+              <th>Практика</th>
+              <th>Открытые ответы</th>
+              <th>Синхронизация</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${moduleRows.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.title)}</td>
+                <td>${row.submitted ? `<strong>${row.percent}%</strong> <span class="table-note">(${escapeHtml(row.score)})</span>` : `<span class="table-empty">не пройден</span>`}</td>
+                <td>${row.practiceAnswered ? `<span class="table-ok">сохранено</span>` : `<span class="table-empty">пусто</span>`}</td>
+                <td>${row.openTotal ? `${row.openAnswered}/${row.openTotal}` : `<span class="table-note">нет</span>`}</td>
+                <td>${escapeHtml(row.syncStatus)}</td>
+              </tr>
+            `).join("")}
+            <tr class="results-final-row">
+              <td>Итоговая диагностика</td>
+              <td colspan="2">${finalScore ? `<strong>${finalScore.percent}%</strong> <span class="table-note">(${finalScore.correct}/${finalScore.total})</span>` : `<span class="table-empty">не пройдена</span>`}</td>
+              <td>${finalScore ? escapeHtml(finalScore.level) : `<span class="table-empty">уровень не определен</span>`}</td>
+              <td>${escapeHtml(state.resultStatus || "не отправлено")}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 async function authenticateParticipant(mode) {
   const name = document.getElementById("participantName")?.value.trim();
   const department = document.getElementById("participantDepartment")?.value.trim() || state.participant.department || "";
@@ -2646,6 +2863,8 @@ async function authenticateParticipant(mode) {
   state.authStatus = mode === "register" ? "регистрация выполняется" : "вход выполняется";
   saveState();
   renderParticipantForm();
+  renderResultsOverview();
+  renderAccountStatus();
 
   try {
     const authResponse = await requestAuth(mode, { name, department, passwordHash });
@@ -2654,6 +2873,8 @@ async function authenticateParticipant(mode) {
       state.participant = { ...state.participant, name, department, passwordHash: "", authenticated: false, authMode: "" };
       saveState();
       renderParticipantForm();
+      renderResultsOverview();
+      renderAccountStatus();
       showToast(state.authStatus);
       return;
     }
@@ -2666,27 +2887,46 @@ async function authenticateParticipant(mode) {
       authMode: mode,
       userStatus: authResponse.status || "active"
     };
+    // Загружаем прогресс именно этого участника (у нового пользователя он пустой).
+    applyProgress(loadProgressFor(state.participant));
     state.authStatus = mode === "register" ? "регистрация выполнена" : "вход выполнен";
     saveState();
     renderParticipantForm();
+    renderResultsOverview();
+    renderAccountStatus();
+    renderNav();
+    renderObjectives();
     renderRoadmap();
     startAccessMonitor();
     renderModule(0);
+    updateProgress();
     showToast(state.authStatus);
   } catch (error) {
     state.authStatus = "ошибка связи с таблицей";
     saveState();
     renderParticipantForm();
+    renderResultsOverview();
+    renderAccountStatus();
     showToast("Не удалось проверить вход. Проверьте публикацию Apps Script.");
   }
 }
 
 function logoutParticipant() {
+  // Сохраняем прогресс текущего участника под его персональным ключом…
+  saveState();
+  // …и очищаем его в памяти, чтобы следующий пользователь начал с чистого листа.
   state.participant = { name: "", department: "", passwordHash: "", authenticated: false, authMode: "" };
   state.authStatus = "не выполнен вход";
+  applyProgress(blankProgress());
   saveState();
   renderParticipantForm();
+  renderResultsOverview();
+  renderAccountStatus();
+  renderNav();
+  renderObjectives();
+  renderRoadmap();
   renderAuthRequired();
+  updateProgress();
   showToast("Вы вышли из курса.");
 }
 
@@ -2757,7 +2997,7 @@ function sha256Fallback(value) {
   return hash.map((item) => item.toString(16).padStart(8, "0")).join("");
 }
 
-function requestServerAction(action, data = {}, options = {}) {
+function requestJsonpResponse(action, data = {}, options = {}) {
   if (!RESULTS_ENDPOINT) return Promise.reject(new Error("endpoint is empty"));
   const timeout = options.timeout || 15000;
   const callbackName = `aiCourseAuth_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -2784,11 +3024,7 @@ function requestServerAction(action, data = {}, options = {}) {
 
     window[callbackName] = (response) => {
       cleanup();
-      if (response?.ok) {
-        resolve(response);
-        return;
-      }
-      reject(new Error(response?.error || "server error"));
+      resolve(response);
     };
 
     script.onerror = () => {
@@ -2801,8 +3037,15 @@ function requestServerAction(action, data = {}, options = {}) {
   });
 }
 
+function requestServerAction(action, data = {}, options = {}) {
+  return requestJsonpResponse(action, data, options).then((response) => {
+    if (response?.ok) return response;
+    throw new Error(response?.error || "server error");
+  });
+}
+
 function requestAuth(action, data) {
-  return requestServerAction(action, {
+  return requestJsonpResponse(action, {
     name: data.name,
     department: data.department || "",
     passwordHash: data.passwordHash
@@ -2844,12 +3087,37 @@ function renderRoadmap() {
   });
 }
 
-function renderModule(index) {
+function getPracticeStatusText(moduleId) {
+  return (state.practice?.[moduleId] || "").trim()
+    ? "Статус практического ответа: сохранено локально."
+    : "Статус практического ответа: пока пусто.";
+}
+
+function getOpenStatusText(module) {
+  const total = (module.openQuestions || []).length;
+  const answered = (module.openQuestions || []).reduce((count, _question, openIndex) => {
+    return count + ((state.openAnswers?.[`${module.id}:${openIndex}`] || "").trim() ? 1 : 0);
+  }, 0);
+  return total
+    ? `Статус открытых ответов: заполнено ${answered} из ${total}.`
+    : "Статус открытых ответов: в этом блоке нет открытых вопросов.";
+}
+
+function updateModuleResponseStatus(module) {
+  const practiceNode = contentView.querySelector(`[data-practice-status="${module.id}"]`);
+  if (practiceNode) practiceNode.textContent = getPracticeStatusText(module.id);
+
+  const openNode = contentView.querySelector(`[data-open-status="${module.id}"]`);
+  if (openNode) openNode.textContent = getOpenStatusText(module);
+}
+
+function renderModule(index, options = {}) {
   if (!isAuthenticated()) {
     currentModuleIndex = index;
     renderAuthRequired();
     return;
   }
+  const scrollMode = options.scrollMode || "top";
   currentView = "module";
   currentModuleIndex = index;
   const module = modules[index];
@@ -2900,7 +3168,7 @@ function renderModule(index) {
         `).join("")}
         ${(!module.theorySections && module.theory) ? module.theory.map((paragraph) => `<p>${paragraph}</p>`).join("") : ""}
         ${module.officialLinks ? renderOfficialLinks(module.officialLinks) : ""}
-        <aside class="notes">Заметка ведущего: связать тему "${module.title}" с реальной рабочей ситуацией участников и попросить привести один пример из их практики.</aside>
+        <aside class="notes">Рабочий фокус блока: соотнесите материал с одной своей задачей и зафиксируйте, как именно будете применять его на практике.</aside>
       </section>
 
       ${module.visual ? renderVisualization(module.visual) : ""}
@@ -2931,6 +3199,7 @@ function renderModule(index) {
           </ol>
         ` : ""}
         <textarea data-practice="${module.id}" placeholder="Введите свой вариант. Он сохранится только в вашем браузере.">${state.practice[module.id] || ""}</textarea>
+        <p class="field-status" data-practice-status="${module.id}">${getPracticeStatusText(module.id)}</p>
       </section>
 
       <section class="section-band open-question-box">
@@ -2942,6 +3211,7 @@ function renderModule(index) {
             <textarea data-open="${module.id}:${openIndex}" placeholder="Ответьте своими словами. Ответ сохранится в браузере и будет отправлен в отдельный лист таблицы.">${state.openAnswers?.[`${module.id}:${openIndex}`] || ""}</textarea>
           </label>
         `).join("")}
+        <p class="field-status" data-open-status="${module.id}">${getOpenStatusText(module)}</p>
       </section>
 
       <section class="section-band quiz-card">
@@ -2960,6 +3230,8 @@ function renderModule(index) {
     field.addEventListener("input", () => {
       state.practice[field.dataset.practice] = field.value;
       saveState();
+      updateModuleResponseStatus(module);
+      renderResultsOverview();
     });
   });
 
@@ -2967,6 +3239,8 @@ function renderModule(index) {
     field.addEventListener("input", () => {
       state.openAnswers[field.dataset.open] = field.value;
       saveState();
+      updateModuleResponseStatus(module);
+      renderResultsOverview();
     });
   });
 
@@ -2984,7 +3258,13 @@ function renderModule(index) {
   renderNav();
   renderObjectives();
   renderRoadmap();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  updateProgress();
+  updateModuleResponseStatus(module);
+  if (scrollMode === "result") {
+    document.getElementById("moduleResult")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (scrollMode === "top") {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   prepareAnimations(contentView);
 }
 
@@ -3483,7 +3763,7 @@ async function submitModule(module) {
   }, 0);
   state.modules[module.id] = moduleState;
   saveState();
-  renderModule(currentModuleIndex);
+  renderModule(currentModuleIndex, { scrollMode: "result" });
   updateProgress();
   void syncModuleResult(module);
 }
@@ -3512,6 +3792,7 @@ async function syncModuleResult(module) {
   const percent = Math.round((moduleState.score / module.quiz.length) * 100);
   state.moduleSync[module.id] = "отправляется";
   saveState();
+  renderResultsOverview();
   if (currentView === "module" && modules[currentModuleIndex]?.id === module.id) {
     const resultNode = document.getElementById("moduleResult");
     if (resultNode) resultNode.innerHTML = renderModuleResult(module, moduleState);
@@ -3533,6 +3814,7 @@ async function syncModuleResult(module) {
 
     state.moduleSync[module.id] = "отправлено";
     saveState();
+    renderResultsOverview();
     if (currentView === "module" && modules[currentModuleIndex]?.id === module.id) {
       const resultNode = document.getElementById("moduleResult");
       if (resultNode) resultNode.innerHTML = renderModuleResult(module, moduleState);
@@ -3540,6 +3822,7 @@ async function syncModuleResult(module) {
   } catch (error) {
     state.moduleSync[module.id] = explainEndpointError(error);
     saveState();
+    renderResultsOverview();
     if (currentView === "module" && modules[currentModuleIndex]?.id === module.id) {
       const resultNode = document.getElementById("moduleResult");
       if (resultNode) resultNode.innerHTML = renderModuleResult(module, moduleState);
@@ -3599,8 +3882,9 @@ async function renderLibrary() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-async function renderFinalTest() {
+async function renderFinalTest(options = {}) {
   if (!(await requireActiveParticipant())) return;
+  const scrollMode = options.scrollMode || "top";
   currentView = "final";
   const finalSubmitted = state.finalSubmitted;
 
@@ -3647,7 +3931,11 @@ async function renderFinalTest() {
   renderRoadmap();
   updateProgress();
   prepareAnimations(contentView);
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (scrollMode === "result") {
+    document.getElementById("finalResult")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (scrollMode === "top") {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 }
 
 function renderFinalQuestion(question, index, submitted) {
@@ -3676,7 +3964,7 @@ async function submitFinal() {
   }
   state.finalSubmitted = true;
   saveState();
-  renderFinalTest();
+  renderFinalTest({ scrollMode: "result" });
   updateProgress();
 }
 
@@ -3894,6 +4182,25 @@ async function sendFinalResultsViaGet(payload) {
   }
 }
 
+async function sendResultsViaLegacyPost(payload) {
+  const body = JSON.stringify(payload);
+
+  if (navigator.sendBeacon) {
+    const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+    const queued = navigator.sendBeacon(RESULTS_ENDPOINT, blob);
+    if (queued) return;
+  }
+
+  await fetch(RESULTS_ENDPOINT, {
+    method: "POST",
+    mode: "no-cors",
+    cache: "no-store",
+    headers: { "Content-Type": "text/plain;charset=UTF-8" },
+    body,
+    keepalive: true
+  });
+}
+
 async function submitResults() {
   if (!state.finalSubmitted) {
     showToast("Сначала пройдите итоговый тест.");
@@ -3906,25 +4213,47 @@ async function submitResults() {
   if (!RESULTS_ENDPOINT) {
     state.resultStatus = "ошибка: не указана ссылка Google Apps Script";
     saveState();
-    renderFinalTest();
+    renderFinalTest({ scrollMode: "keep" });
     showToast("Ссылка отправки не указана. Скачайте файл результата или настройте Google Apps Script.");
     return;
   }
 
   state.resultStatus = "отправляется";
   saveState();
-  renderFinalTest();
+  renderResultsOverview();
+  renderFinalTest({ scrollMode: "keep" });
 
   try {
     await sendFinalResultsViaGet(payload);
     state.resultStatus = "отправлено";
     saveState();
-    renderFinalTest();
+    renderResultsOverview();
+    renderFinalTest({ scrollMode: "keep" });
     showToast("Результат отправлен в таблицу.");
   } catch (error) {
+    if (/Неизвестное действие/i.test(String(error?.message || error))) {
+      try {
+        await sendResultsViaLegacyPost(payload);
+        state.resultStatus = "отправлено через резервный канал";
+        saveState();
+        renderResultsOverview();
+        renderFinalTest({ scrollMode: "keep" });
+        showToast("Итог, практика и открытые ответы отправлены через резервный канал. Для мини-тестов нужен обновленный Apps Script.");
+        return;
+      } catch (legacyError) {
+        state.resultStatus = explainEndpointError(legacyError);
+        saveState();
+        renderResultsOverview();
+        renderFinalTest({ scrollMode: "keep" });
+        showToast("Не удалось отправить даже через резервный канал. Проверьте публикацию Google Apps Script.");
+        return;
+      }
+    }
+
     state.resultStatus = explainEndpointError(error);
     saveState();
-    renderFinalTest();
+    renderResultsOverview();
+    renderFinalTest({ scrollMode: "keep" });
     showToast("Не удалось отправить результат. Проверьте публикацию Google Apps Script или скачайте файл результата.");
   }
 }
@@ -3952,6 +4281,7 @@ function updateProgress() {
   const percent = Math.round(((completedModules + finalBonus) / total) * 100);
   progressText.textContent = `${percent}%`;
   progressFill.style.width = `${percent}%`;
+  renderResultsOverview();
 }
 
 function initializeAnimations() {
@@ -4037,12 +4367,7 @@ function prepareAnimations(scope = document) {
 function resetProgress() {
   const confirmed = window.confirm("Сбросить все ответы, практические записи и итоговый результат?");
   if (!confirmed) return;
-  state.modules = {};
-  state.finalAnswers = {};
-  state.practice = {};
-  state.openAnswers = {};
-  state.resultStatus = "не отправлено";
-  state.finalSubmitted = false;
+  applyProgress(blankProgress());
   saveState();
   if (isAuthenticated()) {
     renderModule(0);
