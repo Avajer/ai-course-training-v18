@@ -19,8 +19,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Geologica:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=26">
-  <link rel="stylesheet" href="features.css?v=26">
+  <link rel="stylesheet" href="styles-v27.css">
+  <link rel="stylesheet" href="features-v27.css">
 </head>
 <body class="tpl-course-module">
   <div class="deck app-shell">
@@ -90,15 +90,39 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="script.js?v=26"></script>
-  <script src="features.js?v=26"></script>
+  <script src="script-v27.js"></script>
+  <script src="features-v27.js"></script>
   <script>
     /* PWA: офлайн-режим и установка как приложение (только на https / localhost) */
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("sw.js").catch(function (e) {
-          console.warn("SW registration failed:", e);
-        });
+        var reloadedKey = "aiCourseSwReloadedV27";
+        var onControllerChange = function () {
+          if (sessionStorage.getItem(reloadedKey)) return;
+          sessionStorage.setItem(reloadedKey, "1");
+          window.location.reload();
+        };
+
+        navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+        navigator.serviceWorker
+          .register("sw-v27.js", { updateViaCache: "none" })
+          .then(function (registration) {
+            return registration.update().then(function () {
+              if (registration.waiting) registration.waiting.postMessage("skip-waiting");
+              registration.addEventListener("updatefound", function () {
+                var worker = registration.installing;
+                if (!worker) return;
+                worker.addEventListener("statechange", function () {
+                  if (worker.state === "installed" && navigator.serviceWorker.controller) {
+                    worker.postMessage("skip-waiting");
+                  }
+                });
+              });
+            });
+          })
+          .catch(function (e) {
+            console.warn("SW registration failed:", e);
+          });
       });
     }
   </script>
