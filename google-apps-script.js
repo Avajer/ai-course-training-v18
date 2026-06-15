@@ -1,4 +1,5 @@
 const TEST_RESULTS_SHEET = 'Результаты теста';
+const FINAL_ANSWERS_SHEET = 'Ответы итогового теста';
 const MODULE_RESULTS_SHEET = 'Мини-тесты';
 const OPEN_ANSWERS_SHEET = 'Открытые вопросы';
 const PRACTICE_ANSWERS_SHEET = 'Практические задания';
@@ -28,13 +29,14 @@ function doGet(e) {
     } else if (action === 'health') {
       response = {
         ok: true,
-        version: '2026-06-15-v2',
+        version: '2026-06-15-v3',
         capabilities: {
           register: true,
           login: true,
           stats: true,
           submitModuleResult: true,
           submitFinalSummary: true,
+          submitFinalAnswers: true,
           submitOpenAnswer: true,
           submitPracticeAnswer: true
         }
@@ -43,6 +45,8 @@ function doGet(e) {
       response = submitModuleResultGet_(e.parameter);
     } else if (action === 'submitFinalSummary') {
       response = submitFinalSummaryGet_(e.parameter);
+    } else if (action === 'submitFinalAnswers') {
+      response = submitFinalAnswersGet_(e.parameter);
     } else if (action === 'submitOpenAnswer') {
       response = submitOpenAnswerGet_(e.parameter);
     } else if (action === 'submitPracticeAnswer') {
@@ -76,6 +80,7 @@ function doPost(e) {
     }
 
     appendTestResult_(payload, participant, submittedAt);
+    appendFinalAnswers_(payload.finalAnswers || [], participant, submittedAt, payload.build || '');
     appendOpenAnswers_(payload, participant, submittedAt);
     appendPracticeAnswers_(payload, participant, submittedAt);
 
@@ -217,6 +222,58 @@ function appendTestResult_(payload, participant, submittedAt) {
     JSON.stringify(payload.completedModules || []),
     JSON.stringify(payload.finalAnswers || [])
   ]);
+}
+
+// Развёрнутые ответы итогового теста: по одной строке на вопрос (читаемо).
+function appendFinalAnswers_(answers, participant, submittedAt, build) {
+  if (!answers || !answers.length) return;
+  const sheet = getSheet_(FINAL_ANSWERS_SHEET);
+  ensureHeader_(sheet, [
+    'Дата',
+    'ФИО',
+    'Подразделение',
+    '№',
+    'Категория',
+    'Вопрос',
+    'Ваш ответ',
+    'Правильный ответ',
+    'Верно',
+    'Сборка'
+  ]);
+
+  const rows = answers.map((a, index) => [
+    submittedAt,
+    participant.name || '',
+    participant.department || '',
+    (Number(a.number) || index + 1),
+    a.category || '',
+    a.question || '',
+    a.selected != null ? a.selected : '',
+    a.correct != null ? a.correct : '',
+    a.isCorrect ? 'да' : 'нет',
+    build || ''
+  ]);
+
+  // Пишем пачкой — быстрее и без гонок при нескольких строках.
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+function submitFinalAnswersGet_(params) {
+  const participant = {
+    name: params.name || '',
+    department: params.department || '',
+    passwordHash: params.passwordHash || ''
+  };
+  const userCheck = findUser_(participant.name, participant.passwordHash);
+  if (!userCheck.ok) return userCheck;
+
+  const answers = safeJsonParse_(params.answers, []);
+  appendFinalAnswers_(answers, {
+    name: userCheck.name,
+    department: userCheck.department || participant.department || ''
+  }, params.submittedAt ? new Date(params.submittedAt) : new Date(), params.build || '');
+
+  return { ok: true, saved: answers.length };
 }
 
 function appendModuleResult_(payload, participant, submittedAt) {
