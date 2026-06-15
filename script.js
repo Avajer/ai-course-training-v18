@@ -3941,10 +3941,14 @@ async function renderFinalTest(options = {}) {
   renderRoadmap();
   updateProgress();
   prepareAnimations(contentView);
+  // Показываем тест сразу: длинный список вопросов не должен зависеть от
+  // появления по скроллу, иначе он выглядит «пустым», пока не доскроллишь.
+  contentView.querySelectorAll(".revealable").forEach((el) => el.classList.add("is-revealed"));
   if (scrollMode === "result") {
     document.getElementById("finalResult")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (scrollMode === "top") {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Прокручиваем к самому тесту, а не к началу страницы (иначе видно только герой-блок).
+    contentView.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
