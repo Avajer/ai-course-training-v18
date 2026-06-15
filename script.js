@@ -19,6 +19,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
+const COURSE_BUILD = "v28";
 
 const modules = [
   {
@@ -2322,6 +2323,7 @@ function initializeCourse() {
 function loadState() {
   const fallback = {
     modules: {},
+    moduleSync: {},
     finalAnswers: {},
     practice: {},
     openAnswers: {},
@@ -2755,22 +2757,24 @@ function sha256Fallback(value) {
   return hash.map((item) => item.toString(16).padStart(8, "0")).join("");
 }
 
-function requestAuth(action, data) {
+function requestServerAction(action, data = {}, options = {}) {
   if (!RESULTS_ENDPOINT) return Promise.reject(new Error("endpoint is empty"));
+  const timeout = options.timeout || 15000;
   const callbackName = `aiCourseAuth_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const url = new URL(RESULTS_ENDPOINT);
   url.searchParams.set("action", action);
   url.searchParams.set("callback", callbackName);
-  url.searchParams.set("name", data.name);
-  url.searchParams.set("department", data.department || "");
-  url.searchParams.set("passwordHash", data.passwordHash);
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    url.searchParams.set(key, typeof value === "string" ? value : JSON.stringify(value));
+  });
 
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error("auth timeout"));
-    }, 12000);
+    }, timeout);
 
     function cleanup() {
       clearTimeout(timer);
@@ -2780,7 +2784,11 @@ function requestAuth(action, data) {
 
     window[callbackName] = (response) => {
       cleanup();
-      resolve(response);
+      if (response?.ok) {
+        resolve(response);
+        return;
+      }
+      reject(new Error(response?.error || "server error"));
     };
 
     script.onerror = () => {
@@ -2791,6 +2799,14 @@ function requestAuth(action, data) {
     script.src = url.toString();
     document.body.appendChild(script);
   });
+}
+
+function requestAuth(action, data) {
+  return requestServerAction(action, {
+    name: data.name,
+    department: data.department || "",
+    passwordHash: data.passwordHash
+  }, { timeout: 20000 });
 }
 
 function renderRoadmap() {
@@ -3469,6 +3485,7 @@ async function submitModule(module) {
   saveState();
   renderModule(currentModuleIndex);
   updateProgress();
+  void syncModuleResult(module);
 }
 
 function renderModuleResult(module, moduleState) {
@@ -3476,13 +3493,59 @@ function renderModuleResult(module, moduleState) {
   const text = percent === 100
     ? "Отлично. Можно двигаться дальше и применять прием на практике."
     : "Повторите пояснения к ошибочным вопросам и попробуйте применить блок на своей задаче.";
+  const syncStatus = state.moduleSync?.[module.id] || "не отправлено";
   return `
     <div class="result-panel">
       <div class="result-score">${percent}%</div>
       <strong>${moduleState.score} из ${module.quiz.length} правильных ответов</strong>
       <p>${text}</p>
+      <p><strong>Синхронизация в таблицу:</strong> ${syncStatus}</p>
     </div>
   `;
+}
+
+async function syncModuleResult(module) {
+  if (!RESULTS_ENDPOINT || !validateParticipant({ quiet: true })) return;
+  const moduleState = state.modules[module.id];
+  if (!moduleState?.submitted) return;
+
+  const percent = Math.round((moduleState.score / module.quiz.length) * 100);
+  state.moduleSync[module.id] = "отправляется";
+  saveState();
+  if (currentView === "module" && modules[currentModuleIndex]?.id === module.id) {
+    const resultNode = document.getElementById("moduleResult");
+    if (resultNode) resultNode.innerHTML = renderModuleResult(module, moduleState);
+  }
+
+  try {
+    await requestServerAction("submitModuleResult", {
+      name: state.participant.name,
+      department: state.participant.department || "",
+      passwordHash: state.participant.passwordHash,
+      submittedAt: new Date().toISOString(),
+      build: COURSE_BUILD,
+      moduleId: module.id,
+      moduleTitle: module.title,
+      correct: moduleState.score,
+      total: module.quiz.length,
+      percent
+    }, { timeout: 20000 });
+
+    state.moduleSync[module.id] = "отправлено";
+    saveState();
+    if (currentView === "module" && modules[currentModuleIndex]?.id === module.id) {
+      const resultNode = document.getElementById("moduleResult");
+      if (resultNode) resultNode.innerHTML = renderModuleResult(module, moduleState);
+    }
+  } catch (error) {
+    state.moduleSync[module.id] = explainEndpointError(error);
+    saveState();
+    if (currentView === "module" && modules[currentModuleIndex]?.id === module.id) {
+      const resultNode = document.getElementById("moduleResult");
+      if (resultNode) resultNode.innerHTML = renderModuleResult(module, moduleState);
+    }
+    showToast("Мини-тест сохранён локально, но не отправлен в таблицу.");
+  }
 }
 
 async function renderLibrary() {
@@ -3728,6 +3791,7 @@ function buildResultsPayload() {
   return {
     action: "submitResult",
     submittedAt: new Date().toISOString(),
+    build: COURSE_BUILD,
     participant: state.participant,
     score: { correct, total: finalQuestions.length, percent, level: getLevel(percent) },
     categoryScores,
@@ -3746,22 +3810,88 @@ function buildResultsPayload() {
   };
 }
 
-function validateParticipant() {
+function validateParticipant(options = {}) {
+  const quiet = Boolean(options.quiet);
   const name = state.participant?.name?.trim();
   const department = state.participant?.department?.trim();
   if (!state.participant?.authenticated || !state.participant?.passwordHash) {
-    showToast("Войдите или зарегистрируйтесь перед отправкой результата.");
-    renderParticipantForm();
-    participantView.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!quiet) {
+      showToast("Войдите или зарегистрируйтесь перед отправкой результата.");
+      renderParticipantForm();
+      participantView.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     return false;
   }
   if (!name || !department) {
-    showToast("В учетной записи не хватает ФИО или подразделения.");
-    renderParticipantForm();
-    participantView.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!quiet) {
+      showToast("В учетной записи не хватает ФИО или подразделения.");
+      renderParticipantForm();
+      participantView.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     return false;
   }
   return true;
+}
+
+function explainEndpointError(error) {
+  const message = String(error?.message || error || "");
+  if (/Неизвестное действие/i.test(message)) return "ошибка: Apps Script опубликован в старой версии";
+  if (/отключ|заблок|удал|blocked|deleted|disabled/i.test(message)) return "доступ отключён владельцем";
+  if (/timeout|request failed|auth request failed/i.test(message)) return "ошибка связи с Google Apps Script";
+  if (/не найден|зарегистрируйтесь/i.test(message)) return "пользователь не найден в таблице";
+  if (/парол/i.test(message)) return "ошибка пароля";
+  return `ошибка: ${message || "не удалось отправить"}`;
+}
+
+function getParticipantRequestData() {
+  return {
+    name: state.participant.name,
+    department: state.participant.department || "",
+    passwordHash: state.participant.passwordHash
+  };
+}
+
+function buildFinalSummaryRequest(payload) {
+  return {
+    ...getParticipantRequestData(),
+    submittedAt: payload.submittedAt,
+    build: payload.build || COURSE_BUILD,
+    percent: payload.score.percent,
+    correct: payload.score.correct,
+    total: payload.score.total,
+    level: payload.score.level,
+    categoryScores: JSON.stringify(payload.categoryScores || {}),
+    completedModules: JSON.stringify(payload.completedModules || []),
+    finalAnswerIndexes: finalQuestions.map((question, index) => Number(state.finalAnswers[index] ?? -1)).join(",")
+  };
+}
+
+async function sendFinalResultsViaGet(payload) {
+  await requestServerAction("submitFinalSummary", buildFinalSummaryRequest(payload), { timeout: 20000 });
+
+  for (const row of payload.openAnswerRows) {
+    await requestServerAction("submitOpenAnswer", {
+      ...getParticipantRequestData(),
+      submittedAt: payload.submittedAt,
+      build: payload.build || COURSE_BUILD,
+      moduleId: row.moduleId,
+      moduleTitle: row.moduleTitle,
+      question: row.question,
+      answer: row.answer
+    }, { timeout: 20000 });
+  }
+
+  for (const row of payload.practiceAnswerRows) {
+    await requestServerAction("submitPracticeAnswer", {
+      ...getParticipantRequestData(),
+      submittedAt: payload.submittedAt,
+      build: payload.build || COURSE_BUILD,
+      moduleId: row.moduleId,
+      moduleTitle: row.moduleTitle,
+      task: row.task,
+      answer: row.answer
+    }, { timeout: 20000 });
+  }
 }
 
 async function submitResults() {
@@ -3786,21 +3916,16 @@ async function submitResults() {
   renderFinalTest();
 
   try {
-    const response = await fetch(RESULTS_ENDPOINT, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    });
-    state.resultStatus = response ? "отправлено на проверку" : "отправлено на проверку";
+    await sendFinalResultsViaGet(payload);
+    state.resultStatus = "отправлено";
     saveState();
     renderFinalTest();
-    showToast("Результат отправлен на проверку.");
+    showToast("Результат отправлен в таблицу.");
   } catch (error) {
-    state.resultStatus = "ошибка отправки";
+    state.resultStatus = explainEndpointError(error);
     saveState();
     renderFinalTest();
-    showToast("Не удалось отправить результат. Скачайте файл результата.");
+    showToast("Не удалось отправить результат. Проверьте публикацию Google Apps Script или скачайте файл результата.");
   }
 }
 

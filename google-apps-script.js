@@ -1,4 +1,5 @@
 const TEST_RESULTS_SHEET = 'Результаты теста';
+const MODULE_RESULTS_SHEET = 'Мини-тесты';
 const OPEN_ANSWERS_SHEET = 'Открытые вопросы';
 const PRACTICE_ANSWERS_SHEET = 'Практические задания';
 const USERS_SHEET = 'Пользователи';
@@ -24,6 +25,28 @@ function doGet(e) {
         name: e.parameter.name || '',
         passwordHash: e.parameter.passwordHash || ''
       });
+    } else if (action === 'health') {
+      response = {
+        ok: true,
+        version: '2026-06-15-v2',
+        capabilities: {
+          register: true,
+          login: true,
+          stats: true,
+          submitModuleResult: true,
+          submitFinalSummary: true,
+          submitOpenAnswer: true,
+          submitPracticeAnswer: true
+        }
+      };
+    } else if (action === 'submitModuleResult') {
+      response = submitModuleResultGet_(e.parameter);
+    } else if (action === 'submitFinalSummary') {
+      response = submitFinalSummaryGet_(e.parameter);
+    } else if (action === 'submitOpenAnswer') {
+      response = submitOpenAnswerGet_(e.parameter);
+    } else if (action === 'submitPracticeAnswer') {
+      response = submitPracticeAnswerGet_(e.parameter);
     } else if (action === 'stats') {
       response = computeStats_(e.parameter.ownerKey || '');
     } else {
@@ -196,6 +219,33 @@ function appendTestResult_(payload, participant, submittedAt) {
   ]);
 }
 
+function appendModuleResult_(payload, participant, submittedAt) {
+  const sheet = getSheet_(MODULE_RESULTS_SHEET);
+  ensureHeader_(sheet, [
+    'Дата',
+    'ФИО',
+    'Подразделение',
+    'ID блока',
+    'Блок',
+    'Процент',
+    'Правильно',
+    'Всего',
+    'Сборка'
+  ]);
+
+  sheet.appendRow([
+    submittedAt,
+    participant.name || '',
+    participant.department || '',
+    payload.moduleId || '',
+    payload.moduleTitle || '',
+    payload.percent || 0,
+    payload.correct || 0,
+    payload.total || 0,
+    payload.build || ''
+  ]);
+}
+
 function appendOpenAnswers_(payload, participant, submittedAt) {
   const sheet = getSheet_(OPEN_ANSWERS_SHEET);
   ensureHeader_(sheet, [
@@ -256,6 +306,113 @@ function getSheet_(name) {
 function ensureHeader_(sheet, header) {
   if (sheet.getLastRow() > 0) return;
   sheet.appendRow(header);
+}
+
+function submitModuleResultGet_(params) {
+  const participant = {
+    name: params.name || '',
+    department: params.department || '',
+    passwordHash: params.passwordHash || ''
+  };
+  const userCheck = findUser_(participant.name, participant.passwordHash);
+  if (!userCheck.ok) return userCheck;
+
+  appendModuleResult_({
+    moduleId: params.moduleId || '',
+    moduleTitle: params.moduleTitle || '',
+    percent: Number(params.percent || 0),
+    correct: Number(params.correct || 0),
+    total: Number(params.total || 0),
+    build: params.build || ''
+  }, {
+    name: userCheck.name,
+    department: userCheck.department || participant.department || ''
+  }, params.submittedAt ? new Date(params.submittedAt) : new Date());
+
+  return { ok: true };
+}
+
+function submitFinalSummaryGet_(params) {
+  const participant = {
+    name: params.name || '',
+    department: params.department || '',
+    passwordHash: params.passwordHash || ''
+  };
+  const userCheck = findUser_(participant.name, participant.passwordHash);
+  if (!userCheck.ok) return userCheck;
+
+  appendTestResult_({
+    score: {
+      percent: Number(params.percent || 0),
+      correct: Number(params.correct || 0),
+      total: Number(params.total || 0),
+      level: params.level || ''
+    },
+    categoryScores: safeJsonParse_(params.categoryScores, {}),
+    completedModules: safeJsonParse_(params.completedModules, []),
+    finalAnswers: String(params.finalAnswerIndexes || '')
+  }, {
+    name: userCheck.name,
+    department: userCheck.department || participant.department || ''
+  }, params.submittedAt ? new Date(params.submittedAt) : new Date());
+
+  return { ok: true };
+}
+
+function submitOpenAnswerGet_(params) {
+  const participant = {
+    name: params.name || '',
+    department: params.department || '',
+    passwordHash: params.passwordHash || ''
+  };
+  const userCheck = findUser_(participant.name, participant.passwordHash);
+  if (!userCheck.ok) return userCheck;
+
+  appendOpenAnswers_({
+    openAnswerRows: [{
+      moduleId: params.moduleId || '',
+      moduleTitle: params.moduleTitle || '',
+      question: params.question || '',
+      answer: params.answer || ''
+    }]
+  }, {
+    name: userCheck.name,
+    department: userCheck.department || participant.department || ''
+  }, params.submittedAt ? new Date(params.submittedAt) : new Date());
+
+  return { ok: true };
+}
+
+function submitPracticeAnswerGet_(params) {
+  const participant = {
+    name: params.name || '',
+    department: params.department || '',
+    passwordHash: params.passwordHash || ''
+  };
+  const userCheck = findUser_(participant.name, participant.passwordHash);
+  if (!userCheck.ok) return userCheck;
+
+  appendPracticeAnswers_({
+    practiceAnswerRows: [{
+      moduleId: params.moduleId || '',
+      moduleTitle: params.moduleTitle || '',
+      task: params.task || '',
+      answer: params.answer || ''
+    }]
+  }, {
+    name: userCheck.name,
+    department: userCheck.department || participant.department || ''
+  }, params.submittedAt ? new Date(params.submittedAt) : new Date());
+
+  return { ok: true };
+}
+
+function safeJsonParse_(value, fallback) {
+  try {
+    return JSON.parse(value || '');
+  } catch (error) {
+    return fallback;
+  }
 }
 
 /* ====== Сводная статистика для admin.html (только чтение) ====== */

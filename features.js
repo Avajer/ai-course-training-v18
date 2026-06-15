@@ -9,7 +9,7 @@
 (function () {
   "use strict";
 
-  var COURSE_VERSION = "v27";
+  var COURSE_VERSION = "v28";
   var LS = {
     settings: "aiCourseSandboxSettings",
     mylib: "aiCourseMyPrompts",
@@ -49,7 +49,7 @@
     lastFocus = document.activeElement;
     var overlay = elFrom(
       '<div class="feat-overlay ' + (opts.center ? "is-center" : "") + '" role="dialog" aria-modal="true" aria-label="' + esc(opts.title) + '">' +
-        '<div class="feat-panel">' +
+        '<div class="feat-panel' + (opts.panelClass ? ' ' + esc(opts.panelClass) : '') + '">' +
           '<div class="feat-panel-head">' +
             '<div><h3>' + esc(opts.title) + '</h3>' + (opts.subtitle ? '<p>' + esc(opts.subtitle) + '</p>' : "") + '</div>' +
             '<button class="feat-close" type="button" aria-label="Закрыть">✕</button>' +
@@ -515,6 +515,65 @@
     }, {});
     return { correct: correct, total: fq.length, percent: percent, byCat: byCat };
   }
+  function certificateMarkSvg() {
+    return '' +
+      '<svg class="feat-cert-mark" viewBox="0 0 240 240" aria-hidden="true">' +
+        '<defs>' +
+          '<linearGradient id="certGold" x1="0" x2="1">' +
+            '<stop offset="0%" stop-color="#d7b66a"/>' +
+            '<stop offset="50%" stop-color="#f3df9e"/>' +
+            '<stop offset="100%" stop-color="#b98d31"/>' +
+          '</linearGradient>' +
+          '<linearGradient id="certInk" x1="0" x2="1">' +
+            '<stop offset="0%" stop-color="#1f2940"/>' +
+            '<stop offset="100%" stop-color="#41547d"/>' +
+          '</linearGradient>' +
+        '</defs>' +
+        '<circle cx="120" cy="120" r="102" fill="none" stroke="url(#certGold)" stroke-width="4"/>' +
+        '<circle cx="120" cy="120" r="88" fill="rgba(255,255,255,0.72)" stroke="rgba(39,56,92,0.16)" stroke-width="2"/>' +
+        '<circle cx="120" cy="120" r="72" fill="none" stroke="rgba(39,56,92,0.12)" stroke-width="1.4" stroke-dasharray="3 7"/>' +
+        '<path d="M120 46 137 88 182 92 148 122 158 166 120 142 82 166 92 122 58 92 103 88Z" fill="url(#certInk)" opacity="0.1"/>' +
+        '<path d="M120 58 134 94 172 98 143 122 152 160 120 141 88 160 97 122 68 98 106 94Z" fill="none" stroke="url(#certGold)" stroke-width="3.2" stroke-linejoin="round"/>' +
+        '<circle cx="120" cy="120" r="26" fill="#fff" stroke="url(#certGold)" stroke-width="2.6"/>' +
+        '<text x="120" y="129" text-anchor="middle" font-family="Geologica, Onest, sans-serif" font-size="24" font-weight="800" fill="#22304c">AI</text>' +
+        '<path d="M70 160c14 16 30 25 50 29" fill="none" stroke="url(#certGold)" stroke-width="3" stroke-linecap="round"/>' +
+        '<path d="M170 160c-14 16-30 25-50 29" fill="none" stroke="url(#certGold)" stroke-width="3" stroke-linecap="round"/>' +
+      '</svg>';
+  }
+  function certificateBackdropSvg() {
+    return '' +
+      '<svg class="feat-cert-watermark" viewBox="0 0 960 680" preserveAspectRatio="none" aria-hidden="true">' +
+        '<defs>' +
+          '<linearGradient id="certLineFade" x1="0" x2="1">' +
+            '<stop offset="0%" stop-color="rgba(53,75,120,0)"/>' +
+            '<stop offset="45%" stop-color="rgba(53,75,120,0.18)"/>' +
+            '<stop offset="100%" stop-color="rgba(53,75,120,0)"/>' +
+          '</linearGradient>' +
+          '<radialGradient id="certGlow" cx="50%" cy="50%" r="55%">' +
+            '<stop offset="0%" stop-color="rgba(216,186,108,0.26)"/>' +
+            '<stop offset="100%" stop-color="rgba(216,186,108,0)"/>' +
+          '</radialGradient>' +
+        '</defs>' +
+        '<rect x="0" y="0" width="960" height="680" fill="transparent"/>' +
+        '<circle cx="790" cy="120" r="140" fill="url(#certGlow)"/>' +
+        '<circle cx="150" cy="530" r="120" fill="url(#certGlow)" opacity="0.55"/>' +
+        '<path d="M24 176c140-60 260-76 422-56 160 19 290 73 490 32" fill="none" stroke="url(#certLineFade)" stroke-width="1.3"/>' +
+        '<path d="M12 502c178-56 341-56 518-8 152 42 268 44 418 0" fill="none" stroke="url(#certLineFade)" stroke-width="1.1"/>' +
+        '<g stroke="rgba(43,61,101,0.12)" stroke-width="1.2" fill="none">' +
+          '<circle cx="778" cy="122" r="94"/>' +
+          '<circle cx="778" cy="122" r="66"/>' +
+          '<circle cx="162" cy="540" r="84"/>' +
+        '</g>' +
+        '<g fill="rgba(43,61,101,0.12)">' +
+          '<circle cx="254" cy="164" r="3.2"/>' +
+          '<circle cx="314" cy="142" r="3.2"/>' +
+          '<circle cx="358" cy="186" r="3.2"/>' +
+          '<circle cx="680" cy="504" r="3.2"/>' +
+          '<circle cx="726" cy="468" r="3.2"/>' +
+          '<circle cx="782" cy="520" r="3.2"/>' +
+        '</g>' +
+      '</svg>';
+  }
   function openCertificate() {
     var st = getState();
     var score = computeFinalScore();
@@ -525,21 +584,47 @@
     var level = typeof getLevel === "function" ? getLevel(score.percent).split(".")[0] : "";
     var mods = getModules();
     var done = mods.filter(function (m) { return st.modules[m.id] && st.modules[m.id].submitted; }).length;
+    var certId = "AI-" + String(score.percent).padStart(2, "0") + "-" + String(done).padStart(2, "0") + "-" + new Date().toISOString().slice(0, 10).replace(/-/g, "");
     var content =
       '<div class="feat-cert" id="certCard">' +
-        '<div class="feat-cert-eyebrow">Сертификат о прохождении</div>' +
-        '<div class="feat-cert-title">ИИ-практикум для работников</div>' +
-        '<p class="feat-cert-sub">настоящим подтверждается, что</p>' +
-        '<div class="feat-cert-name">' + esc(name) + '</div>' +
-        (dept ? '<p class="feat-cert-sub">' + esc(dept) + '</p>' : "") +
-        '<p class="feat-cert-sub">успешно прошёл(ла) практический курс по работе с нейросетями</p>' +
-        '<div class="feat-cert-meta">' +
-          '<div><strong>' + score.percent + '%</strong><span>итоговый тест</span></div>' +
-          '<div><strong>' + done + "/" + mods.length + '</strong><span>блоков</span></div>' +
-          '<div><strong>' + esc(date) + '</strong><span>дата</span></div>' +
+        certificateBackdropSvg() +
+        '<div class="feat-cert-frame">' +
+          '<div class="feat-cert-topline">' +
+            '<div class="feat-cert-chip">Именной сертификат</div>' +
+            '<div class="feat-cert-code">№ ' + esc(certId) + '</div>' +
+          '</div>' +
+          '<div class="feat-cert-header">' +
+            '<div class="feat-cert-hero">' + certificateMarkSvg() + '</div>' +
+            '<div class="feat-cert-headcopy">' +
+              '<div class="feat-cert-eyebrow">Практическая программа обучения</div>' +
+              '<div class="feat-cert-title">ИИ-практикум для работников</div>' +
+              '<p class="feat-cert-sub">Настоящий сертификат подтверждает успешное прохождение курса по практическому использованию нейросетей в рабочих задачах, включая постановку запросов, проверку результата и правила безопасной работы.</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="feat-cert-award">' +
+            '<div class="feat-cert-label">Выдан</div>' +
+            '<div class="feat-cert-name">' + esc(name) + '</div>' +
+            (dept ? '<p class="feat-cert-dept">' + esc(dept) + '</p>' : "") +
+            '<p class="feat-cert-text">Участник подтвердил понимание базовых и продвинутых сценариев работы с ИИ, умение собирать проверяемые промпты и применять нейросети как инструмент профессионального усиления, а не замены ответственного решения.</p>' +
+          '</div>' +
+          '<div class="feat-cert-meta">' +
+            '<div><strong>' + score.percent + '%</strong><span>результат диагностики</span></div>' +
+            '<div><strong>' + done + "/" + mods.length + '</strong><span>пройдено блоков</span></div>' +
+            '<div><strong>' + esc(date) + '</strong><span>дата выдачи</span></div>' +
+          '</div>' +
+          '<div class="feat-cert-footer">' +
+            '<div class="feat-cert-sign">' +
+              '<span class="feat-cert-line"></span>' +
+              '<strong>Агван</strong>' +
+              '<small>Автор и ведущий курса</small>' +
+            '</div>' +
+            '<div class="feat-cert-sign is-right">' +
+              '<span class="feat-cert-line"></span>' +
+              '<strong>' + esc(level || "Базовый уровень") + '</strong>' +
+              '<small>Подтверждённый уровень прохождения</small>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
-        '<div class="feat-cert-seal">✦</div>' +
-        (level ? '<p class="feat-cert-foot">' + esc(level) + '</p>' : "") +
       '</div>' +
       '<div class="feat-actions"><button class="feat-btn" id="certPrint" type="button">🖨 Печать / сохранить в PDF</button>' +
       '<button class="feat-btn sec" id="certPng" type="button">⬇ Скачать картинкой</button></div>';
@@ -548,6 +633,7 @@
       subtitle: "Печать → «Сохранить как PDF» даёт именной документ.",
       content: content,
       center: true,
+      panelClass: "feat-panel-certificate",
       onMount: function (root) {
         $("#certPrint", root).addEventListener("click", function () {
           document.body.classList.add("feat-printing-cert");
