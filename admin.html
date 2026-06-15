@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f6fb">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Панель владельца — ИИ-практикум</title>
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Geologica:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=25">
+  <link rel="stylesheet" href="features.css?v=25">
+  <style>
+    .admin-wrap { max-width: 1100px; margin: 0 auto; padding: 1.6rem; display: grid; gap: 1.3rem; }
+    .admin-head { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: end; justify-content: space-between; }
+    .admin-controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .admin-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.9rem; }
+    .admin-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+    th, td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--line); }
+    th { color: var(--soft); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; }
+    td.num, th.num { text-align: right; font-family: var(--font-mono); }
+    .admin-empty { color: var(--soft); }
+  </style>
+</head>
+<body>
+  <div class="admin-wrap">
+    <div class="admin-head">
+      <div>
+        <p class="eyebrow">Панель владельца курса</p>
+        <h1 class="h2">Аналитика прохождения</h1>
+        <p class="rail-hint">Сводка из Google-таблицы: участники, баллы, слабые темы, подразделения.</p>
+      </div>
+      <div class="admin-controls">
+        <input class="feat-input" id="ownerKey" type="password" placeholder="Ключ владельца (если задан)" style="width:230px">
+        <button class="feat-btn" id="loadBtn" type="button">Загрузить</button>
+        <button class="theme-toggle" id="themeToggle" type="button">🌙 Тёмная</button>
+      </div>
+    </div>
+
+    <div id="status" class="section-band"><p class="admin-empty">Нажмите «Загрузить», чтобы получить статистику.</p></div>
+    <div id="report" class="is-hidden" style="display:grid;gap:1.3rem"></div>
+  </div>
+
+  <script>
+    const ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
+    const CAT_LABELS = { prompt: "Промпты", security: "Безопасность", tools: "Инструменты", verification: "Проверка", docs: "Документы", basics: "Основы" };
+
+    function applyTheme(t){ document.documentElement.dataset.theme = t; try { localStorage.setItem("aiCourseTheme", t); } catch(e){}
+      document.getElementById("themeToggle").textContent = t === "dark" ? "☀️ Светлая" : "🌙 Тёмная"; }
+    applyTheme((function(){ try { return localStorage.getItem("aiCourseTheme") || "light"; } catch(e){ return "light"; } })());
+    document.getElementById("themeToggle").addEventListener("click", function(){
+      applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+    });
+
+    function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+    function loadStats(){
+      const status = document.getElementById("status");
+      const report = document.getElementById("report");
+      report.classList.add("is-hidden");
+      status.innerHTML = '<p>Загружаю статистику…</p>';
+      const key = encodeURIComponent(document.getElementById("ownerKey").value || "");
+      const cb = "__stats" + Date.now();
+      const timer = setTimeout(function(){ status.innerHTML = '<p style="color:var(--bad)">Не удалось получить ответ. Проверьте ссылку Apps Script и наличие действия stats.</p>'; cleanup(); }, 15000);
+      function cleanup(){ delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+      window[cb] = function(data){ clearTimeout(timer); cleanup(); render(data); };
+      const s = document.createElement("script");
+      s.src = ENDPOINT + "?action=stats&ownerKey=" + key + "&callback=" + cb;
+      s.onerror = function(){ clearTimeout(timer); status.innerHTML = '<p style="color:var(--bad)">Сеть недоступна или ссылка неверна.</p>'; cleanup(); };
+      document.body.appendChild(s);
+    }
+
+    function bar(label, percent, sub){
+      return '<div class="bar-row"><span>'+esc(label)+'</span>'+
+        '<div class="bar-track"><i style="width:'+percent+'%"></i></div>'+
+        '<strong>'+percent+'%'+(sub?' <small style="color:var(--soft)">'+esc(sub)+'</small>':'')+'</strong></div>';
+    }
+
+    function render(data){
+      const status = document.getElementById("status");
+      const report = document.getElementById("report");
+      if (!data || !data.ok){ status.innerHTML = '<p style="color:var(--bad)">'+esc((data&&data.error)||"Ошибка")+'</p>'; return; }
+      status.innerHTML = '<p class="admin-empty">Обновлено: '+esc(new Date(data.generatedAt).toLocaleString("ru-RU"))+'</p>';
+
+      const cards =
+        '<div class="admin-cards">'+
+          card(data.users.total, "участников") +
+          card(data.users.active, "активных") +
+          card(data.users.blocked, "отключённых") +
+          card(data.results.count, "сдали тест") +
+          card(data.results.avgPercent + "%", "средний балл") +
+        '</div>';
+
+      const cats = (data.categories||[]).length
+        ? '<section class="section-band"><h3>Слабые темы (по группе, слабые сверху)</h3><div class="bar-visual" style="margin-top:1rem">'+
+            data.categories.map(c=>bar(CAT_LABELS[c.category]||c.category, c.percent, c.correct+"/"+c.total)).join("")+'</div></section>'
+        : '';
+
+      const levelKeys = Object.keys(data.levels||{});
+      const levels = levelKeys.length
+        ? '<section class="section-band"><h3>Распределение по уровням</h3><div style="margin-top:1rem;display:grid;gap:.5rem">'+
+            levelKeys.sort((a,b)=>data.levels[b]-data.levels[a]).map(l=>'<div class="legend-row"><span class="legend-dot dot-1"></span><span>'+esc(l)+'</span><strong>'+data.levels[l]+'</strong></div>').join("")+'</div></section>'
+        : '';
+
+      const depts = (data.departments||[]).length
+        ? '<section class="section-band"><h3>Подразделения</h3><table><thead><tr><th>Подразделение</th><th class="num">Сдали</th><th class="num">Средний</th></tr></thead><tbody>'+
+            data.departments.map(d=>'<tr><td>'+esc(d.department)+'</td><td class="num">'+d.count+'</td><td class="num">'+d.avgPercent+'%</td></tr>').join("")+'</tbody></table></section>'
+        : '';
+
+      const mc = data.moduleCompletions||{};
+      const mcKeys = Object.keys(mc);
+      const modules = mcKeys.length
+        ? '<section class="section-band"><h3>Прохождение блоков (число сдавших итог с этим блоком)</h3><table><thead><tr><th>Блок</th><th class="num">Завершили</th></tr></thead><tbody>'+
+            mcKeys.sort((a,b)=>mc[b]-mc[a]).map(k=>'<tr><td>'+esc(k)+'</td><td class="num">'+mc[k]+'</td></tr>').join("")+'</tbody></table></section>'
+        : '';
+
+      const recent = (data.recent||[]).length
+        ? '<section class="section-band"><h3>Последние результаты</h3><table><thead><tr><th>Дата</th><th>ФИО</th><th>Подразделение</th><th class="num">Балл</th></tr></thead><tbody>'+
+            data.recent.map(r=>'<tr><td>'+esc(r.date?new Date(r.date).toLocaleDateString("ru-RU"):"—")+'</td><td>'+esc(r.name)+'</td><td>'+esc(r.department)+'</td><td class="num">'+r.percent+'%</td></tr>').join("")+'</tbody></table></section>'
+        : '';
+
+      report.innerHTML = cards + '<div class="admin-grid2">'+cats+levels+'</div>' + depts + '<div class="admin-grid2">'+modules+recent+'</div>';
+      report.classList.remove("is-hidden");
+    }
+
+    function card(value, label){
+      return '<div class="keyfact-card"><span class="keyfact-value">'+esc(value)+'</span><strong>'+esc(label)+'</strong></div>';
+    }
+
+    document.getElementById("loadBtn").addEventListener("click", loadStats);
+    document.getElementById("ownerKey").addEventListener("keydown", function(e){ if (e.key==="Enter") loadStats(); });
+  </script>
+</body>
+</html>
