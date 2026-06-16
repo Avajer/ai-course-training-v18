@@ -1,7 +1,7 @@
 const STORAGE_KEY = "aiCourseProgressV19";          // старый общий блок (только для разовой миграции)
 const SESSION_KEY = "aiCourseSessionV26";           // кто сейчас вошёл (участник + статус)
 const PROGRESS_PREFIX = "aiCourseProgressV26::";    // прогресс отдельно для каждого участника
-const PROGRESS_FIELDS = ["modules", "moduleSync", "finalAnswers", "practice", "openAnswers", "checks", "finalSubmitted", "resultStatus"];
+const PROGRESS_FIELDS = ["modules", "moduleSync", "finalAnswers", "finalAttempt", "practice", "openAnswers", "checks", "finalSubmitted", "resultStatus"];
 const THEME_KEY = "aiCourseTheme";
 
 function blankProgress() {
@@ -9,6 +9,7 @@ function blankProgress() {
     modules: {},
     moduleSync: {},
     finalAnswers: {},
+    finalAttempt: null,
     practice: {},
     openAnswers: {},
     checks: {},
@@ -82,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v30";
+const COURSE_BUILD = "v31";
 
 const modules = [
   {
@@ -2649,7 +2650,94 @@ function renderAccountStatus() {
   });
 }
 
+function renderPasswordResetForm() {
+  const name = state.participant?.name || "";
+  participantView.innerHTML = `
+    <div class="participant-copy">
+      <p class="kicker">Сброс пароля</p>
+      <h2 class="h2">Задайте новый пароль</h2>
+      <p>Владелец курса сбросил пароль для учётной записи <strong>${escapeHtml(name)}</strong>. Придумайте новый пароль — после сохранения вы сразу войдёте.</p>
+    </div>
+    <div class="participant-fields auth-fields">
+      <label>
+        <span>Новый пароль</span>
+        <input id="resetPassword" type="password" autocomplete="new-password" placeholder="Не короче 6 символов">
+      </label>
+      <label>
+        <span>Повторите пароль</span>
+        <input id="resetPasswordConfirm" type="password" autocomplete="new-password" placeholder="Ещё раз новый пароль">
+      </label>
+      <div class="auth-actions">
+        <button id="resetSaveButton" class="primary-button" type="button">Сохранить и войти</button>
+        <button id="resetCancelButton" class="ghost-button" type="button">Отмена</button>
+      </div>
+      <p class="submit-hint">Сброс доступен, только если организатор пометил вашу запись как «reset» в листе «Пользователи».</p>
+    </div>
+  `;
+  renderAccountStatus();
+  document.getElementById("resetSaveButton")?.addEventListener("click", completePasswordReset);
+  document.getElementById("resetPasswordConfirm")?.addEventListener("keydown", (e) => { if (e.key === "Enter") completePasswordReset(); });
+  document.getElementById("resetCancelButton")?.addEventListener("click", () => {
+    state.passwordResetMode = false;
+    saveState();
+    renderParticipantForm();
+  });
+}
+
+async function completePasswordReset() {
+  const name = (state.participant?.name || "").trim();
+  const password = document.getElementById("resetPassword")?.value || "";
+  const confirm = document.getElementById("resetPasswordConfirm")?.value || "";
+  if (!name) { showToast("Не хватает ФИО для сброса."); return; }
+  if (password.length < 6) { showToast("Новый пароль должен быть не короче 6 символов."); return; }
+  if (password !== confirm) { showToast("Пароли не совпадают."); return; }
+
+  const passwordHash = await sha256(`${name.toLowerCase()}::${password}`);
+  state.authStatus = "сохраняем новый пароль";
+  saveState();
+  renderPasswordResetForm();
+
+  try {
+    const resp = await requestAuth("resetPassword", { name, department: state.participant.department || "", passwordHash });
+    if (!resp.ok) {
+      state.authStatus = resp.error || "не удалось сменить пароль";
+      saveState();
+      renderPasswordResetForm();
+      showToast(state.authStatus);
+      return;
+    }
+    state.passwordResetMode = false;
+    state.participant = {
+      name,
+      department: resp.department || state.participant.department || "",
+      passwordHash,
+      authenticated: true,
+      authMode: "login",
+      userStatus: resp.status || "active"
+    };
+    applyProgress(loadProgressFor(state.participant));
+    state.authStatus = "пароль обновлён, вход выполнен";
+    saveState();
+    renderParticipantForm();
+    renderResultsOverview();
+    renderAccountStatus();
+    renderNav();
+    renderObjectives();
+    renderRoadmap();
+    startAccessMonitor();
+    renderModule(0);
+    updateProgress();
+    showToast("Новый пароль сохранён. Вы вошли в курс.");
+  } catch (error) {
+    state.authStatus = "ошибка связи с таблицей";
+    saveState();
+    renderPasswordResetForm();
+    showToast("Не удалось сохранить пароль. Проверьте публикацию Apps Script.");
+  }
+}
+
 function renderParticipantForm() {
+  if (state.passwordResetMode) { renderPasswordResetForm(); return; }
   const isAuthenticated = Boolean(state.participant?.authenticated);
   participantView.innerHTML = `
     <div class="participant-copy">
@@ -2879,6 +2967,17 @@ async function authenticateParticipant(mode) {
   try {
     const authResponse = await requestAuth(mode, { name, department, passwordHash });
     if (!authResponse.ok) {
+      // Владелец сбросил пароль → переключаемся на форму нового пароля.
+      if (authResponse.reset && mode === "login") {
+        state.passwordResetMode = true;
+        state.participant = { ...state.participant, name, department, passwordHash: "", authenticated: false, authMode: "login" };
+        state.authStatus = "пароль сброшен — задайте новый";
+        saveState();
+        renderPasswordResetForm();
+        participantView.scrollIntoView({ behavior: "smooth", block: "center" });
+        showToast(authResponse.error || "Пароль сброшен. Задайте новый пароль.");
+        return;
+      }
       state.authStatus = authResponse.error || "ошибка авторизации";
       state.participant = { ...state.participant, name, department, passwordHash: "", authenticated: false, authMode: "" };
       saveState();
@@ -3892,20 +3991,78 @@ async function renderLibrary() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+// Категория для вопросов из банка мини-тестов (для разбивки по темам в итоге).
+const MODULE_CATEGORY = {
+  intro: "basics", tools: "tools", risks: "verification", qwen: "tools",
+  prompt: "prompt", formula: "prompt", "simple-complex": "prompt", iterations: "prompt",
+  mistakes: "prompt", library: "prompt", verification: "verification", docs: "docs",
+  security: "security", multimodal: "tools", tables: "verification", longdocs: "docs",
+  comms: "prompt", boundary: "security", "final-practice": "basics"
+};
+
+function shuffleArray(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Пул вопросов = итоговые + банк мини-тестов (с проставленной категорией).
+function buildFinalPool() {
+  const pool = finalQuestions.map((q) => ({ q: q.q, options: q.options, answer: q.answer, category: q.category }));
+  if (typeof advancedQuizBank === "object" && advancedQuizBank) {
+    Object.keys(advancedQuizBank).forEach((moduleId) => {
+      const category = MODULE_CATEGORY[moduleId] || "basics";
+      (advancedQuizBank[moduleId] || []).forEach((item) => {
+        if (item && Array.isArray(item.options)) {
+          pool.push({ q: item.q, options: item.options, answer: item.answer, category });
+        }
+      });
+    });
+  }
+  return pool;
+}
+
+const FINAL_TEST_SIZE = 30;
+
+// Собирает попытку: случайная выборка из пула + перемешанные варианты.
+function buildFinalAttempt(size) {
+  const pool = shuffleArray(buildFinalPool());
+  const picked = pool.slice(0, Math.min(size, pool.length));
+  return picked.map((question, index) => {
+    const order = shuffleArray(question.options.map((opt, i) => ({ opt, i })));
+    const options = order.map((o) => o.opt);
+    const answer = order.findIndex((o) => o.i === question.answer);
+    return { id: `final-${index}`, q: question.q, options, answer, category: question.category };
+  });
+}
+
+// Текущая попытка участника (стабильна до сброса/новой попытки).
+function getFinalSet() {
+  if (Array.isArray(state.finalAttempt) && state.finalAttempt.length) return state.finalAttempt;
+  state.finalAttempt = buildFinalAttempt(FINAL_TEST_SIZE);
+  if (!state.finalSubmitted) state.finalAnswers = {};
+  saveState();
+  return state.finalAttempt;
+}
+
 async function renderFinalTest(options = {}) {
   if (!(await requireActiveParticipant())) return;
   const scrollMode = options.scrollMode || "top";
   currentView = "final";
   const finalSubmitted = state.finalSubmitted;
+  const finalSet = getFinalSet();
 
   contentView.innerHTML = `
     <section class="section-band">
       <p class="eyebrow">Итоговая диагностика</p>
       <h2>Финальный тест и рекомендации</h2>
-      <p>Ответьте на вопросы. После проверки курс покажет уровень подготовки и рекомендации по слабым зонам.</p>
+      <p>Ответьте на вопросы. После проверки курс покажет уровень подготовки и рекомендации по слабым зонам. Вопросы и варианты у каждой попытки в случайном порядке.</p>
     </section>
     <section class="section-band quiz-card">
-      ${finalQuestions.map((question, index) => renderFinalQuestion(question, index, finalSubmitted)).join("")}
+      ${finalSet.map((question, index) => renderFinalQuestion(question, index, finalSubmitted)).join("")}
       <div class="lesson-actions">
         <button class="primary-button" type="button" id="submitFinal">Показать результат</button>
         <button class="secondary-button" type="button" id="goLibrary">Открыть библиотеку промптов</button>
@@ -3972,7 +4129,7 @@ function renderFinalQuestion(question, index, submitted) {
 
 async function submitFinal() {
   if (!(await requireActiveParticipant())) return;
-  if (Object.keys(state.finalAnswers).length < finalQuestions.length) {
+  if (Object.keys(state.finalAnswers).length < getFinalSet().length) {
     showToast("Ответьте на все вопросы итогового теста.");
     return;
   }
@@ -3983,14 +4140,15 @@ async function submitFinal() {
 }
 
 function renderFinalResult() {
-  const correct = finalQuestions.reduce((sum, question, index) => {
+  const finalSet = getFinalSet();
+  const correct = finalSet.reduce((sum, question, index) => {
     return sum + (Number(state.finalAnswers[index]) === question.answer ? 1 : 0);
   }, 0);
-  const percent = Math.round((correct / finalQuestions.length) * 100);
+  const percent = Math.round((correct / finalSet.length) * 100);
   const level = getLevel(percent);
   const recommendations = getRecommendations(percent);
   const categoryLabels = { prompt: "Промпты", security: "Безопасность", tools: "Инструменты", verification: "Проверка", docs: "Документы", basics: "Основы" };
-  const categoryScores = finalQuestions.reduce((acc, question, index) => {
+  const categoryScores = finalSet.reduce((acc, question, index) => {
     if (!acc[question.category]) acc[question.category] = { correct: 0, total: 0 };
     acc[question.category].total += 1;
     if (Number(state.finalAnswers[index]) === question.answer) acc[question.category].correct += 1;
@@ -4001,7 +4159,7 @@ function renderFinalResult() {
     <div class="result-panel">
       <div class="result-score">${percent}%</div>
       <strong>${level}</strong>
-      <p>${correct} из ${finalQuestions.length} правильных ответов.</p>
+      <p>${correct} из ${finalSet.length} правильных ответов.</p>
       <div class="final-categories">
         ${Object.entries(categoryScores).map(([category, score], index) => {
           const categoryPercent = Math.round((score.correct / score.total) * 100);
@@ -4037,7 +4195,7 @@ function getLevel(percent) {
 }
 
 function getRecommendations(percent) {
-  const wrongCategories = finalQuestions.reduce((acc, question, index) => {
+  const wrongCategories = getFinalSet().reduce((acc, question, index) => {
     if (Number(state.finalAnswers[index]) !== question.answer) {
       acc[question.category] = (acc[question.category] || 0) + 1;
     }
@@ -4057,11 +4215,12 @@ function getRecommendations(percent) {
 }
 
 function buildResultsPayload() {
-  const correct = finalQuestions.reduce((sum, question, index) => {
+  const finalSet = getFinalSet();
+  const correct = finalSet.reduce((sum, question, index) => {
     return sum + (Number(state.finalAnswers[index]) === question.answer ? 1 : 0);
   }, 0);
-  const percent = Math.round((correct / finalQuestions.length) * 100);
-  const categoryScores = finalQuestions.reduce((acc, question, index) => {
+  const percent = Math.round((correct / finalSet.length) * 100);
+  const categoryScores = finalSet.reduce((acc, question, index) => {
     if (!acc[question.category]) acc[question.category] = { correct: 0, total: 0 };
     acc[question.category].total += 1;
     if (Number(state.finalAnswers[index]) === question.answer) acc[question.category].correct += 1;
@@ -4095,10 +4254,10 @@ function buildResultsPayload() {
     submittedAt: new Date().toISOString(),
     build: COURSE_BUILD,
     participant: state.participant,
-    score: { correct, total: finalQuestions.length, percent, level: getLevel(percent) },
+    score: { correct, total: finalSet.length, percent, level: getLevel(percent) },
     categoryScores,
     completedModules,
-    finalAnswers: finalQuestions.map((question, index) => ({
+    finalAnswers: finalSet.map((question, index) => ({
       question: question.q,
       selected: question.options[state.finalAnswers[index]],
       correct: question.options[question.answer],
@@ -4164,7 +4323,7 @@ function buildFinalSummaryRequest(payload) {
     level: payload.score.level,
     categoryScores: JSON.stringify(payload.categoryScores || {}),
     completedModules: JSON.stringify(payload.completedModules || []),
-    finalAnswerIndexes: finalQuestions.map((question, index) => Number(state.finalAnswers[index] ?? -1)).join(",")
+    finalAnswerIndexes: getFinalSet().map((question, index) => Number(state.finalAnswers[index] ?? -1)).join(",")
   };
 }
 

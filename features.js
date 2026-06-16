@@ -9,7 +9,7 @@
 (function () {
   "use strict";
 
-  var COURSE_VERSION = "v30";
+  var COURSE_VERSION = "v31";
   var LS = {
     settings: "aiCourseSandboxSettings",
     mylib: "aiCourseMyPrompts",
@@ -45,7 +45,13 @@
   function getModules() { try { return Array.isArray(window.modules) ? window.modules : (typeof modules !== "undefined" ? modules : []); } catch (e) { return []; } }
   function getGlossary() { try { return typeof glossaryTerms !== "undefined" ? glossaryTerms : []; } catch (e) { return []; } }
   function getLibrary() { try { return typeof promptLibrary !== "undefined" ? promptLibrary : []; } catch (e) { return []; } }
-  function getFinalQuestions() { try { return typeof finalQuestions !== "undefined" ? finalQuestions : []; } catch (e) { return []; } }
+  function getFinalQuestions() {
+    try {
+      var st = getState();
+      if (st && Array.isArray(st.finalAttempt) && st.finalAttempt.length) return st.finalAttempt;
+      return typeof finalQuestions !== "undefined" ? finalQuestions : [];
+    } catch (e) { return []; }
+  }
   function getState() { try { return typeof state !== "undefined" ? state : null; } catch (e) { return null; } }
   function authed() { try { return typeof isAuthenticated === "function" ? isAuthenticated() : false; } catch (e) { return false; } }
 

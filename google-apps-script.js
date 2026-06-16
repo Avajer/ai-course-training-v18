@@ -26,6 +26,11 @@ function doGet(e) {
         name: e.parameter.name || '',
         passwordHash: e.parameter.passwordHash || ''
       });
+    } else if (action === 'resetPassword') {
+      response = resetPassword_({
+        name: e.parameter.name || '',
+        passwordHash: e.parameter.passwordHash || ''
+      });
     } else if (action === 'health') {
       response = {
         ok: true,
@@ -33,6 +38,7 @@ function doGet(e) {
         capabilities: {
           register: true,
           login: true,
+          resetPassword: true,
           stats: true,
           submitModuleResult: true,
           submitFinalSummary: true,
@@ -137,12 +143,57 @@ function loginUser_(user) {
     return { ok: false, error: 'Заполните ФИО и пароль.' };
   }
 
-  const result = findUser_(name, passwordHash);
-  if (!result.ok) return result;
-
   const sheet = getSheet_(USERS_SHEET);
-  sheet.getRange(result.rowIndex, 6).setValue(new Date());
-  return { ok: true, name: result.name, department: result.department, status: result.status };
+  ensureHeader_(sheet, [
+    'Дата регистрации', 'ФИО', 'Подразделение', 'Хэш пароля', 'Статус', 'Последний вход', 'Комментарий'
+  ]);
+  const row = findUserRow_(sheet, name);
+  if (row.rowIndex < 1) {
+    return { ok: false, error: 'Пользователь не найден. Сначала зарегистрируйтесь.' };
+  }
+  const status = String(row.values[4] || '').toLowerCase();
+  if (status === 'blocked' || status === 'deleted') {
+    return { ok: false, error: 'Пользователь отключен владельцем курса.' };
+  }
+  // Владелец сбросил пароль (статус reset или пустой хэш) — участник задаёт новый.
+  const storedHash = String(row.values[3] || '');
+  if (status === 'reset' || !storedHash) {
+    return { ok: false, reset: true, error: 'Пароль сброшен владельцем курса. Задайте новый пароль.' };
+  }
+  if (storedHash !== passwordHash) {
+    return { ok: false, error: 'Неверный пароль.' };
+  }
+  sheet.getRange(row.rowIndex, 6).setValue(new Date());
+  return { ok: true, name: row.values[1] || name, department: row.values[2] || '', status: row.values[4] || 'active' };
+}
+
+// Участник задаёт новый пароль — только если владелец пометил запись reset (или очистил хэш).
+function resetPassword_(user) {
+  const name = normalizeName_(user.name);
+  const passwordHash = String(user.passwordHash || '').trim();
+  if (!name || !passwordHash) {
+    return { ok: false, error: 'Заполните ФИО и новый пароль.' };
+  }
+  const sheet = getSheet_(USERS_SHEET);
+  ensureHeader_(sheet, [
+    'Дата регистрации', 'ФИО', 'Подразделение', 'Хэш пароля', 'Статус', 'Последний вход', 'Комментарий'
+  ]);
+  const row = findUserRow_(sheet, name);
+  if (row.rowIndex < 1) {
+    return { ok: false, error: 'Пользователь не найден.' };
+  }
+  const status = String(row.values[4] || '').toLowerCase();
+  if (status === 'blocked' || status === 'deleted') {
+    return { ok: false, error: 'Пользователь отключён владельцем курса.' };
+  }
+  const storedHash = String(row.values[3] || '');
+  if (status !== 'reset' && storedHash) {
+    return { ok: false, error: 'Сброс пароля недоступен. Обратитесь к организатору курса.' };
+  }
+  sheet.getRange(row.rowIndex, 4).setValue(passwordHash); // Хэш пароля
+  sheet.getRange(row.rowIndex, 5).setValue('active');     // Статус
+  sheet.getRange(row.rowIndex, 6).setValue(new Date());   // Последний вход
+  return { ok: true, name: row.values[1] || name, department: row.values[2] || '', status: 'active' };
 }
 
 function findUser_(name, passwordHash) {
@@ -493,46 +544,65 @@ function computeStats_(ownerKey) {
     });
   }
 
-  // Результаты теста
+  // Результаты теста — дедупликация по участнику: считаем последнюю попытку каждого.
   const levels = {};
   const categories = {}; // { cat: { correct, total } }
   const departments = {}; // { dept: { sum, n } }
   const moduleCompletions = {}; // { moduleId: count }
   const recent = [];
-  let count = 0, percentSum = 0;
+  const byUser = {}; // normName -> { ts, row, attempts, best }
 
   if (resultsSheet && resultsSheet.getLastRow() > 1) {
     const rows = resultsSheet.getRange(2, 1, resultsSheet.getLastRow() - 1, 10).getValues();
-    rows.forEach((r) => {
-      count += 1;
-      const percent = Number(r[3]) || 0;
-      percentSum += percent;
+    rows.forEach((r, idx) => {
       const dept = String(r[2] || '—');
-      const level = String(r[6] || '—');
-      levels[level] = (levels[level] || 0) + 1;
-      if (!departments[dept]) departments[dept] = { sum: 0, n: 0 };
-      departments[dept].sum += percent; departments[dept].n += 1;
+      const percent = Number(r[3]) || 0;
+      const ts = r[0] ? new Date(r[0]).getTime() : 0;
+      recent.push({ date: r[0] ? new Date(r[0]).toISOString() : '', name: String(r[1] || ''), department: dept, percent: percent, level: String(r[6] || '—') });
 
-      try {
-        const cats = JSON.parse(r[7] || '{}');
-        Object.keys(cats).forEach((c) => {
-          if (!categories[c]) categories[c] = { correct: 0, total: 0 };
-          categories[c].correct += Number(cats[c].correct) || 0;
-          categories[c].total += Number(cats[c].total) || 0;
-        });
-      } catch (err) {}
-
-      try {
-        const mods = JSON.parse(r[8] || '[]');
-        mods.forEach((m) => {
-          const id = (m && m.id) ? m.id : m;
-          if (id) moduleCompletions[id] = (moduleCompletions[id] || 0) + 1;
-        });
-      } catch (err) {}
-
-      recent.push({ date: r[0] ? new Date(r[0]).toISOString() : '', name: String(r[1] || ''), department: dept, percent: percent, level: level });
+      const key = normalizeName_(r[1] || '') || ('__row' + idx);
+      if (!byUser[key]) {
+        byUser[key] = { ts: ts, row: r, attempts: 1, best: percent };
+      } else {
+        byUser[key].attempts += 1;
+        if (percent > byUser[key].best) byUser[key].best = percent;
+        if (ts >= byUser[key].ts) { byUser[key].ts = ts; byUser[key].row = r; } // последняя попытка
+      }
     });
   }
+
+  // Агрегируем только по последней попытке каждого участника.
+  let count = 0, attemptsTotal = 0, percentSum = 0;
+  Object.keys(byUser).forEach((key) => {
+    const u = byUser[key];
+    const r = u.row;
+    count += 1;
+    attemptsTotal += u.attempts;
+    const percent = Number(r[3]) || 0;
+    percentSum += percent;
+    const dept = String(r[2] || '—');
+    const level = String(r[6] || '—');
+    levels[level] = (levels[level] || 0) + 1;
+    if (!departments[dept]) departments[dept] = { sum: 0, n: 0 };
+    departments[dept].sum += percent; departments[dept].n += 1;
+
+    try {
+      const cats = JSON.parse(r[7] || '{}');
+      Object.keys(cats).forEach((c) => {
+        if (!categories[c]) categories[c] = { correct: 0, total: 0 };
+        categories[c].correct += Number(cats[c].correct) || 0;
+        categories[c].total += Number(cats[c].total) || 0;
+      });
+    } catch (err) {}
+
+    try {
+      const mods = JSON.parse(r[8] || '[]');
+      mods.forEach((m) => {
+        const id = (m && m.id) ? m.id : m;
+        if (id) moduleCompletions[id] = (moduleCompletions[id] || 0) + 1;
+      });
+    } catch (err) {}
+  });
 
   recent.sort((a, b) => (a.date < b.date ? 1 : -1));
 
@@ -549,7 +619,7 @@ function computeStats_(ownerKey) {
     ok: true,
     generatedAt: new Date().toISOString(),
     users: users,
-    results: { count: count, avgPercent: count ? Math.round(percentSum / count) : 0 },
+    results: { count: count, avgPercent: count ? Math.round(percentSum / count) : 0, attempts: attemptsTotal },
     levels: levels,
     categories: categoriesArr,
     departments: departmentsArr,
