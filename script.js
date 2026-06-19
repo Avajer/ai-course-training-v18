@@ -845,6 +845,11 @@ promptLibrary.push(
   }
 );
 
+// Тег департамента у промптов. Сейчас все «universal» (видны всем);
+// в Фазе 3 часть промптов получит тег конкретного департамента.
+// Все промпты остаются видимыми и сохраняемыми для всех — тег только для фильтра.
+promptLibrary.forEach((prompt) => { if (!prompt.dept) prompt.dept = "universal"; });
+
 const finalQuestions = [
   ["ИИ выдал вывод «контрольная процедура не работала». Следующий шаг?", ["По каждому выводу запросить основание", "Сразу перенести вывод в итоговый отчёт", "Смягчить формулировку без проверки", "Убрать оговорки ради убедительности"], 0, "verification"],
   ["ИИ нашёл поставки чуть ниже лимита согласования. Корректный вывод?", ["Это доказанное нарушение лимитов", "Индикатор риска дробления закупок", "Особенность таблицы, не для анализа", "Повод сразу назвать ответственного"], 1, "verification"],
@@ -2379,6 +2384,7 @@ function rotateQuestionOptions(question, seed) {
 const state = loadState();
 let currentView = "module";
 let currentModuleIndex = 0;
+let libraryFilter = "all";
 let statusMonitorStarted = false;
 let statusCheckInFlight = null;
 
@@ -3945,25 +3951,44 @@ async function syncModuleResult(module) {
 async function renderLibrary() {
   if (!(await requireActiveParticipant())) return;
   currentView = "library";
+  const myDept = departmentIdFor(state.participant?.department);
+  const order = ["universal", ...DEPARTMENTS.map((d) => d.id)];
+  const present = [];
+  promptLibrary.forEach((p) => { const d = p.dept || "universal"; if (!present.includes(d)) present.push(d); });
+  present.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const filter = (libraryFilter === "all" || present.includes(libraryFilter)) ? libraryFilter : "all";
+  const chipLabel = (id) => id === "universal" ? "Универсальные" : (DEPARTMENTS.find((d) => d.id === id)?.name || id);
+  const visible = promptLibrary.map((p, i) => ({ p, i })).filter(({ p }) => filter === "all" || (p.dept || "universal") === filter);
+  const showChips = present.length > 1; // фильтр нужен, только когда появятся департаментские промпты
+
   contentView.innerHTML = `
     <section class="section-band">
       <p class="eyebrow">Рабочий набор</p>
       <h2>Библиотека готовых промптов</h2>
-      <p>Замените поля в квадратных скобках на свои данные. Перед отправкой удалите персональную и конфиденциальную информацию.</p>
+      <p>Замените поля в квадратных скобках на свои данные. Перед отправкой удалите персональную и конфиденциальную информацию. Все промпты доступны всем — фильтр лишь помогает найти нужное.</p>
+      ${showChips ? `<div class="lib-filter">
+        <button class="lib-chip ${filter === "all" ? "is-active" : ""}" type="button" data-lib-filter="all">Все</button>
+        ${present.map((id) => `<button class="lib-chip ${filter === id ? "is-active" : ""} ${id === myDept ? "is-mine" : ""}" type="button" data-lib-filter="${id}">${escapeHtml(chipLabel(id))}${id === myDept ? " ★" : ""}</button>`).join("")}
+      </div>` : ""}
     </section>
     <section class="prompt-grid">
-      ${promptLibrary.map((prompt, index) => `
+      ${visible.map(({ p, i }) => `
         <article class="prompt-card">
           <div>
-            <p class="eyebrow">${prompt.use}</p>
-            <h3>${prompt.title}</h3>
+            <p class="eyebrow">${escapeHtml(p.use)}</p>
+            <h3>${escapeHtml(p.title)}</h3>
+            ${p.dept && p.dept !== "universal" ? `<span class="lib-tag">${escapeHtml(chipLabel(p.dept))}</span>` : ""}
           </div>
-          <pre id="prompt-${index}">${escapeHtml(prompt.text)}</pre>
-          <button class="copy-button" type="button" data-copy="${index}">Скопировать</button>
+          <pre id="prompt-${i}">${escapeHtml(p.text)}</pre>
+          <button class="copy-button" type="button" data-copy="${i}">Скопировать</button>
         </article>
       `).join("")}
     </section>
   `;
+
+  contentView.querySelectorAll("[data-lib-filter]").forEach((button) => {
+    button.addEventListener("click", () => { libraryFilter = button.dataset.libFilter; renderLibrary(); });
+  });
 
   contentView.querySelectorAll("[data-copy]").forEach((button) => {
     button.addEventListener("click", async () => {

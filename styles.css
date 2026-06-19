@@ -2052,6 +2052,31 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
 
 /* ---------- Библиотека промптов ---------- */
 
+.lib-filter { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.lib-chip {
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--glass-2, var(--field-bg));
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+.lib-chip:hover { color: var(--ink); border-color: var(--accent); }
+.lib-chip.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.lib-chip.is-mine { border-color: var(--accent); }
+.lib-tag {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: var(--accent-tint-2);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .prompt-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
