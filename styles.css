@@ -809,16 +809,31 @@ li::marker { color: var(--accent); }
   color: var(--soft);
 }
 
-.participant-fields input {
+.participant-fields input,
+.participant-fields select.auth-select {
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-s);
   background: var(--field-bg);
   color: var(--ink);
+  font: inherit;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
   transition: border-color 200ms ease, box-shadow 200ms ease;
 }
 
-.participant-fields input:focus {
+.participant-fields select.auth-select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23889' stroke-width='1.6' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 0.7rem;
+  padding-right: 2.2rem;
+  cursor: pointer;
+}
+
+.participant-fields input:focus,
+.participant-fields select.auth-select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-tint-2);

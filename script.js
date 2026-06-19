@@ -85,6 +85,31 @@ function initTheme() {
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
 const COURSE_BUILD = "v31";
 
+// Структурные подразделения для регистрации (выпадающий список + «Другое»).
+const DEPARTMENTS = [
+  { id: "krd", name: "Контрольно-ревизионный департамент" },
+  { id: "finance", name: "Департамент финансов" },
+  { id: "legal", name: "Правовой департамент" },
+  { id: "accounting", name: "Департамент бухгалтерского учета и отчетности" },
+  { id: "budget", name: "Департамент бюджетного планирования" }
+];
+
+// id департамента по названию (для тематических блоков). "" — если не из списка.
+function departmentIdFor(name) {
+  const found = DEPARTMENTS.find((d) => d.name === String(name || "").trim());
+  return found ? found.id : "";
+}
+
+// Считывает выбранный департамент из формы (с учётом варианта «Другое»).
+function readDepartmentFromForm() {
+  const select = document.getElementById("participantDepartment");
+  if (!select) return state.participant?.department || "";
+  if (select.value === "__other__") {
+    return (document.getElementById("participantDepartmentOther")?.value || "").trim();
+  }
+  return select.value;
+}
+
 const modules = [
   {
     id: "intro",
@@ -2765,8 +2790,16 @@ function renderParticipantForm() {
           <input id="participantName" type="text" autocomplete="name" value="${escapeHtml(state.participant?.name || "")}" placeholder="Иванов Иван Иванович">
         </label>
         <label class="register-only is-hidden">
-          <span>Подразделение</span>
-          <input id="participantDepartment" type="text" value="${escapeHtml(state.participant?.department || "")}" placeholder="Отдел / управление / группа">
+          <span>Структурное подразделение</span>
+          <select id="participantDepartment" class="auth-select">
+            <option value="">— выберите департамент —</option>
+            ${DEPARTMENTS.map((d) => `<option value="${escapeHtml(d.name)}" ${state.participant?.department === d.name ? "selected" : ""}>${escapeHtml(d.name)}</option>`).join("")}
+            <option value="__other__" ${state.participant?.department && !departmentIdFor(state.participant.department) ? "selected" : ""}>Другое</option>
+          </select>
+        </label>
+        <label class="register-only dept-other ${state.participant?.department && !departmentIdFor(state.participant.department) ? "" : "is-hidden"}">
+          <span>Укажите подразделение</span>
+          <input id="participantDepartmentOther" type="text" value="${escapeHtml(state.participant?.department && !departmentIdFor(state.participant.department) ? state.participant.department : "")}" placeholder="Название подразделения">
         </label>
         <label>
           <span>Пароль</span>
@@ -2788,6 +2821,23 @@ function renderParticipantForm() {
   }
 
   let authMode = state.participant?.authMode || "register";
+  const updateDeptOther = () => {
+    const select = document.getElementById("participantDepartment");
+    const other = participantView.querySelector(".dept-other");
+    if (!select || !other) return;
+    const showOther = authMode === "register" && select.value === "__other__";
+    other.classList.toggle("is-hidden", !showOther);
+  };
+  const saveParticipantFields = () => {
+    state.participant = {
+      ...state.participant,
+      name: document.getElementById("participantName")?.value.trim() || "",
+      department: readDepartmentFromForm(),
+      authenticated: false,
+      authMode
+    };
+    saveState();
+  };
   const setAuthMode = (mode) => {
     authMode = mode;
     state.participant = { ...state.participant, authMode: mode };
@@ -2799,6 +2849,7 @@ function renderParticipantForm() {
     document.getElementById("loginButton").classList.toggle("is-hidden", mode !== "login");
     document.getElementById("registerButton").classList.toggle("is-hidden", mode !== "register");
     document.getElementById("participantPassword").setAttribute("autocomplete", mode === "login" ? "current-password" : "new-password");
+    updateDeptOther();
   };
 
   participantView.querySelectorAll("[data-auth-tab]").forEach((button) => {
@@ -2806,18 +2857,9 @@ function renderParticipantForm() {
   });
   setAuthMode(authMode);
 
-  participantView.querySelectorAll("input").forEach((input) => {
-    input.addEventListener("input", () => {
-      state.participant = {
-        ...state.participant,
-        name: document.getElementById("participantName").value.trim(),
-        department: document.getElementById("participantDepartment")?.value.trim() || state.participant.department || "",
-        authenticated: false,
-        authMode
-      };
-      saveState();
-    });
-  });
+  document.getElementById("participantName")?.addEventListener("input", saveParticipantFields);
+  document.getElementById("participantDepartmentOther")?.addEventListener("input", saveParticipantFields);
+  document.getElementById("participantDepartment")?.addEventListener("change", () => { updateDeptOther(); saveParticipantFields(); });
 
   document.getElementById("loginButton").addEventListener("click", () => authenticateParticipant("login"));
   document.getElementById("registerButton").addEventListener("click", () => authenticateParticipant("register"));
@@ -2944,7 +2986,7 @@ function renderResultsOverview() {
 
 async function authenticateParticipant(mode) {
   const name = document.getElementById("participantName")?.value.trim();
-  const department = document.getElementById("participantDepartment")?.value.trim() || state.participant.department || "";
+  const department = readDepartmentFromForm() || state.participant.department || "";
   const password = document.getElementById("participantPassword")?.value || "";
 
   if (!name || !password || (mode === "register" && !department)) {
