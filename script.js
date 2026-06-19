@@ -2581,10 +2581,10 @@ function renderAuthRequired() {
       <h2>${accessDisabled ? "Учетная запись отключена" : "Регистрация обязательна"}</h2>
       <p>${accessDisabled
         ? "Владелец курса отключил эту учетную запись в листе «Пользователи». Для продолжения обратитесь к организатору курса."
-        : "Чтобы открыть блоки, библиотеку промптов, практические задания и итоговый тест, участник должен зарегистрироваться или войти по ФИО и паролю."}</p>
+        : "Чтобы открыть блоки, библиотеку промптов, открытые вопросы и итоговый тест, участник должен зарегистрироваться или войти по ФИО и паролю."}</p>
       <p>${accessDisabled
         ? `Текущий статус: ${escapeHtml(state.authStatus || "доступ отключен")}`
-        : "Это нужно, чтобы результаты, открытые ответы и практические задания корректно попали в вашу таблицу и были привязаны к конкретному человеку."}</p>
+        : "Это нужно, чтобы результаты и открытые ответы корректно попали в вашу таблицу и были привязаны к конкретному человеку."}</p>
       <p class="submit-hint">${accessDisabled
         ? "Если статус изменен на active, участник сможет снова войти по ФИО и паролю."
         : "Если блоки не открываются, это не ошибка сайта: доступ закрыт до регистрации участника."}</p>
@@ -2874,7 +2874,7 @@ function renderResultsOverview() {
         <div>
           <p class="eyebrow">Результаты участника</p>
           <h2>Сводка появится после входа</h2>
-          <p>Здесь отображаются мини-тесты по блокам, сохраненные практические задания, открытые ответы и статус итоговой диагностики.</p>
+          <p>Здесь отображаются мини-тесты по блокам, открытые ответы и статус итоговой диагностики.</p>
         </div>
       </div>
     `;
@@ -2883,7 +2883,6 @@ function renderResultsOverview() {
 
   const moduleRows = modules.map((module) => {
     const moduleState = state.modules[module.id] || {};
-    const practiceAnswer = (state.practice?.[module.id] || "").trim();
     const openTotal = (module.openQuestions || []).length;
     const openAnswered = (module.openQuestions || []).reduce((count, _question, index) => {
       const key = `${module.id}:${index}`;
@@ -2895,7 +2894,6 @@ function renderResultsOverview() {
       submitted: Boolean(moduleState.submitted),
       score: moduleState.submitted ? `${moduleState.score}/${module.quiz.length}` : "не пройден",
       percent: moduleState.submitted ? Math.round((moduleState.score / module.quiz.length) * 100) : null,
-      practiceAnswered: Boolean(practiceAnswer),
       openAnswered,
       openTotal,
       syncStatus: state.moduleSync?.[module.id] || "не отправлено"
@@ -2906,7 +2904,6 @@ function renderResultsOverview() {
   const averageMiniScore = completedModules.length
     ? Math.round(completedModules.reduce((sum, row) => sum + (row.percent || 0), 0) / completedModules.length)
     : 0;
-  const practiceAnswered = moduleRows.filter((row) => row.practiceAnswered).length;
   const totalOpenAnswered = moduleRows.reduce((sum, row) => sum + row.openAnswered, 0);
   const totalOpenQuestions = moduleRows.reduce((sum, row) => sum + row.openTotal, 0);
   const finalScore = state.finalSubmitted ? buildResultsPayload().score : null;
@@ -2915,7 +2912,7 @@ function renderResultsOverview() {
     state.resultStatus || ""
   ].find((item) => /ошибка|старой версии|не найден|пароля|связи/i.test(String(item)));
   const syncIssueText = /старой версии/i.test(String(syncIssue || ""))
-    ? "Google Apps Script опубликован в старой версии. Сайт уже обновлен, но для отправки мини-тестов, практики, открытых ответов и итоговой диагностики нужно заново опубликовать скрипт Google."
+    ? "Google Apps Script опубликован в старой версии. Сайт уже обновлен, но для отправки мини-тестов, открытых ответов и итоговой диагностики нужно заново опубликовать скрипт Google."
     : syncIssue;
 
   resultsOverview.innerHTML = `
@@ -2935,11 +2932,6 @@ function renderResultsOverview() {
           <small>Средний результат: ${averageMiniScore}%</small>
         </article>
         <article class="results-card">
-          <strong>${practiceAnswered}/${modules.length}</strong>
-          <span>практических ответов сохранено</span>
-          <small>По одному ответу на каждый блок</small>
-        </article>
-        <article class="results-card">
           <strong>${totalOpenAnswered}/${totalOpenQuestions}</strong>
           <span>открытых ответов заполнено</span>
           <small>Рефлексия по рабочим ситуациям</small>
@@ -2956,7 +2948,6 @@ function renderResultsOverview() {
             <tr>
               <th>Блок</th>
               <th>Мини-тест</th>
-              <th>Практика</th>
               <th>Открытые ответы</th>
               <th>Синхронизация</th>
             </tr>
@@ -2966,7 +2957,6 @@ function renderResultsOverview() {
               <tr>
                 <td>${escapeHtml(row.title)}</td>
                 <td>${row.submitted ? `<strong>${row.percent}%</strong> <span class="table-note">(${escapeHtml(row.score)})</span>` : `<span class="table-empty">не пройден</span>`}</td>
-                <td>${row.practiceAnswered ? `<span class="table-ok">сохранено</span>` : `<span class="table-empty">пусто</span>`}</td>
                 <td>${row.openTotal ? `${row.openAnswered}/${row.openTotal}` : `<span class="table-note">нет</span>`}</td>
                 <td>${escapeHtml(row.syncStatus)}</td>
               </tr>
@@ -3238,12 +3228,6 @@ function renderRoadmap() {
   });
 }
 
-function getPracticeStatusText(moduleId) {
-  return (state.practice?.[moduleId] || "").trim()
-    ? "Статус практического ответа: сохранено локально."
-    : "Статус практического ответа: пока пусто.";
-}
-
 function getOpenStatusText(module) {
   const total = (module.openQuestions || []).length;
   const answered = (module.openQuestions || []).reduce((count, _question, openIndex) => {
@@ -3255,9 +3239,6 @@ function getOpenStatusText(module) {
 }
 
 function updateModuleResponseStatus(module) {
-  const practiceNode = contentView.querySelector(`[data-practice-status="${module.id}"]`);
-  if (practiceNode) practiceNode.textContent = getPracticeStatusText(module.id);
-
   const openNode = contentView.querySelector(`[data-open-status="${module.id}"]`);
   if (openNode) openNode.textContent = getOpenStatusText(module);
 }
@@ -3341,20 +3322,8 @@ function renderModule(index, options = {}) {
         </div>
       </section>
 
-      <section class="section-band practice-box">
-        <h3>Практическое задание</h3>
-        <p>${module.practice}</p>
-        ${module.activity ? `
-          <ol class="activity-steps">
-            ${module.activity.steps.map((step) => `<li>${step}</li>`).join("")}
-          </ol>
-        ` : ""}
-        <textarea data-practice="${module.id}" placeholder="Введите свой вариант. Он сохранится только в вашем браузере.">${state.practice[module.id] || ""}</textarea>
-        <p class="field-status" data-practice-status="${module.id}">${getPracticeStatusText(module.id)}</p>
-      </section>
-
       <section class="section-band open-question-box">
-        <p class="eyebrow">Практическая рефлексия</p>
+        <p class="eyebrow">Открытые вопросы</p>
         <h3>Зафиксируйте выводы по своей рабочей ситуации</h3>
         ${(module.openQuestions || []).map((question, openIndex) => `
           <label class="open-question">
@@ -3376,15 +3345,6 @@ function renderModule(index, options = {}) {
       </section>
     </article>
   `;
-
-  contentView.querySelectorAll("[data-practice]").forEach((field) => {
-    field.addEventListener("input", () => {
-      state.practice[field.dataset.practice] = field.value;
-      saveState();
-      updateModuleResponseStatus(module);
-      renderResultsOverview();
-    });
-  });
 
   contentView.querySelectorAll("[data-open]").forEach((field) => {
     field.addEventListener("input", () => {
@@ -4250,7 +4210,7 @@ function getRecommendations(percent) {
   if (wrongCategories.tools) recommendations.push("Ошибки в выборе нейросетей: повторите блок анализа инструментов и отдельный блок Qwen AI.");
   if (wrongCategories.verification) recommendations.push("Ошибки в проверке результата: повторите блок проверки ответа и используйте промпт самопроверки.");
   if (wrongCategories.docs) recommendations.push("Ошибки в работе с документами: повторите блок документов и шаблоны проверки текста.");
-  if (percent < 50) recommendations.push("Общий результат низкий: пройдите курс заново и выполните практические задания после каждого блока.");
+  if (percent < 50) recommendations.push("Общий результат низкий: пройдите курс заново и разберите открытые вопросы после каждого блока.");
   if (percent >= 90) recommendations.push("Высокий результат: создайте личную библиотеку промптов для своих регулярных задач.");
 
   return recommendations.length ? recommendations : ["Результат ровный. Закрепите навык на реальной рабочей задаче и сохраните удачный промпт."];
@@ -4282,14 +4242,6 @@ function buildResultsPayload() {
       };
     })
     .filter((row) => row.answer.trim()));
-  const practiceAnswerRows = modules
-    .map((module) => ({
-      moduleId: module.id,
-      moduleTitle: module.title,
-      task: module.practice,
-      answer: state.practice?.[module.id] || ""
-    }))
-    .filter((row) => row.answer.trim());
 
   return {
     action: "submitResult",
@@ -4307,9 +4259,7 @@ function buildResultsPayload() {
       category: question.category
     })),
     openAnswers: state.openAnswers,
-    openAnswerRows,
-    practiceAnswers: state.practice,
-    practiceAnswerRows
+    openAnswerRows
   };
 }
 
@@ -4404,18 +4354,6 @@ async function sendFinalResultsViaGet(payload) {
       moduleId: row.moduleId,
       moduleTitle: row.moduleTitle,
       question: row.question,
-      answer: row.answer
-    }, { timeout: 20000 });
-  }
-
-  for (const row of payload.practiceAnswerRows) {
-    await requestServerAction("submitPracticeAnswer", {
-      ...getParticipantRequestData(),
-      submittedAt: payload.submittedAt,
-      build: payload.build || COURSE_BUILD,
-      moduleId: row.moduleId,
-      moduleTitle: row.moduleTitle,
-      task: row.task,
       answer: row.answer
     }, { timeout: 20000 });
   }
@@ -4604,7 +4542,7 @@ function prepareAnimations(scope = document) {
 }
 
 function resetProgress() {
-  const confirmed = window.confirm("Сбросить все ответы, практические записи и итоговый результат?");
+  const confirmed = window.confirm("Сбросить все ответы, открытые ответы и итоговый результат?");
   if (!confirmed) return;
   applyProgress(blankProgress());
   saveState();
