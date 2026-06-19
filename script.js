@@ -4066,7 +4066,7 @@ async function renderFinalTest(options = {}) {
     <section class="section-band quiz-card">
       ${finalSet.map((question, index) => renderFinalQuestion(question, index, finalSubmitted)).join("")}
       <div class="lesson-actions">
-        <button class="primary-button" type="button" id="submitFinal">Показать результат</button>
+        <button class="primary-button" type="button" id="submitFinal">Проверить результат</button>
         <button class="secondary-button" type="button" id="goLibrary">Открыть библиотеку промптов</button>
       </div>
       <div id="finalResult">${finalSubmitted ? renderFinalResult() : ""}</div>
@@ -4139,6 +4139,13 @@ async function submitFinal() {
   saveState();
   renderFinalTest({ scrollMode: "result" });
   updateProgress();
+  // Авто-выгрузка в таблицу сразу по «проверить результат» (без отдельной кнопки).
+  // Ответы после сдачи не меняются, поэтому шлём один раз: если уже отправляется/
+  // отправлено — повторно не дёргаем (статус «не отправлено» начинается с «не»);
+  // при ошибке пользователь может нажать «Отправить ещё раз».
+  if (!/^отправ/i.test(state.resultStatus || "")) {
+    void submitResults();
+  }
 }
 
 function renderFinalResult() {
@@ -4179,8 +4186,9 @@ function renderFinalResult() {
       </ul>
       <div class="submit-results-box">
         <p><strong>Статус отправки:</strong> ${state.resultStatus || "не отправлено"}</p>
+        <p class="submit-hint">Результат выгружается в таблицу автоматически. Если статус с ошибкой — нажмите «Отправить ещё раз».</p>
         <div class="lesson-actions">
-          <button class="primary-button" type="button" id="sendResultsButton">Отправить результат</button>
+          <button class="secondary-button" type="button" id="sendResultsButton">Отправить ещё раз</button>
           <button class="secondary-button" type="button" id="downloadResultsButton">Скачать файл</button>
         </div>
         ${!RESULTS_ENDPOINT ? `<p class="submit-hint">Ссылка Google Apps Script пока не указана. Скачайте файл результата или вставьте ссылку в константу RESULTS_ENDPOINT.</p>` : ""}
