@@ -9,7 +9,7 @@
 (function () {
   "use strict";
 
-  var COURSE_VERSION = "v31";
+  var COURSE_VERSION = "v32";
   var LS = {
     settings: "aiCourseSandboxSettings",
     mylib: "aiCourseMyPrompts",

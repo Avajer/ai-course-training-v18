@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v31";
+const COURSE_BUILD = "v32";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -108,6 +108,42 @@ function readDepartmentFromForm() {
     return (document.getElementById("participantDepartmentOther")?.value || "").trim();
   }
   return select.value;
+}
+
+// Тематические блоки по департаментам. Фаза 2 наполнит каждый id:
+//   krd: { intro: "...", mcq: [{ q, options, answer, why }], cases: ["вопрос…"] }
+// Пока пусто — кнопка блока не показывается, пока нет контента.
+const DEPARTMENT_CONTENT = {};
+
+function userDepartmentId() {
+  return departmentIdFor(state.participant?.department);
+}
+
+// Возвращает псевдо-модуль департамента (или null), чтобы переиспользовать
+// рендер вопросов, мини-результат и отправку как у обычного блока.
+function getDepartmentBlock() {
+  const id = userDepartmentId();
+  const content = id ? DEPARTMENT_CONTENT[id] : null;
+  if (!content || (!(content.mcq || []).length && !(content.cases || []).length)) return null;
+  const dept = DEPARTMENTS.find((d) => d.id === id);
+  return {
+    id: "dept-" + id,
+    title: (dept ? dept.name : "Департамент") + " — тематический блок",
+    intro: content.intro || "",
+    quiz: content.mcq || [],
+    cases: content.cases || []
+  };
+}
+
+function hasDepartmentBlock() {
+  return Boolean(isAuthenticated() && getDepartmentBlock());
+}
+
+function updateDepartmentNav() {
+  const show = hasDepartmentBlock();
+  ["departmentButton", "topDepartmentButton"].forEach((id) => {
+    document.getElementById(id)?.classList.toggle("is-hidden", !show);
+  });
 }
 
 const modules = [
@@ -2402,6 +2438,7 @@ let revealObserver = null;
 
 ["libraryButton", "topLibraryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderLibrary()));
 ["finalButton", "topFinalButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderFinalTest()));
+["departmentButton", "topDepartmentButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderDepartmentBlock()));
 ["glossaryButton", "topGlossaryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderGlossary()));
 ["resetButton", "topResetButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", resetProgress));
 
@@ -2416,6 +2453,7 @@ function initializeCourse() {
   renderResultsOverview();
   renderRoadmap();
   renderAccountStatus();
+  updateDepartmentNav();
   if (isAuthenticated()) {
     renderModule(0);
     verifyParticipantAccess({ silent: true });
@@ -2679,6 +2717,7 @@ function renderAccountStatus() {
   document.getElementById("accountChip")?.addEventListener("click", () => {
     participantView.scrollIntoView({ behavior: "smooth", block: "center" });
   });
+  updateDepartmentNav();
 }
 
 function renderPasswordResetForm() {
@@ -3247,6 +3286,99 @@ function getOpenStatusText(module) {
 function updateModuleResponseStatus(module) {
   const openNode = contentView.querySelector(`[data-open-status="${module.id}"]`);
   if (openNode) openNode.textContent = getOpenStatusText(module);
+}
+
+async function renderDepartmentBlock() {
+  if (!(await requireActiveParticipant())) return;
+  const block = getDepartmentBlock();
+  if (!block) { showToast("Тематический блок для вашего департамента ещё готовится."); return; }
+  currentView = "department";
+  const moduleId = block.id;
+  const deptState = state.modules[moduleId] || { answers: {}, submitted: false };
+
+  contentView.innerHTML = `
+    <section class="section-band">
+      <p class="eyebrow">Тематический блок · ${escapeHtml(state.participant.department || "")}</p>
+      <h2>${escapeHtml(block.title)}</h2>
+      ${block.intro ? `<p>${escapeHtml(block.intro)}</p>` : ""}
+    </section>
+    ${block.cases.length ? `
+      <section class="section-band open-question-box">
+        <p class="eyebrow">Кейсы</p>
+        <h3>Открытые вопросы по вашей теме</h3>
+        ${block.cases.map((caseText, caseIndex) => `
+          <label class="open-question">
+            <span>${caseIndex + 1}. ${escapeHtml(caseText)}</span>
+            <textarea data-dept-open="${moduleId}:${caseIndex}" placeholder="Ответьте своими словами. Ответ уйдёт в таблицу на проверку.">${escapeHtml(state.openAnswers?.[`${moduleId}:${caseIndex}`] || "")}</textarea>
+          </label>
+        `).join("")}
+      </section>` : ""}
+    ${block.quiz.length ? `
+      <section class="section-band quiz-card">
+        <h3>Тест по теме</h3>
+        ${block.quiz.map((question, questionIndex) => renderQuestion(moduleId, question, questionIndex, deptState)).join("")}
+        <div class="lesson-actions">
+          <button class="primary-button" type="button" id="submitDept">Проверить результат</button>
+        </div>
+        <div id="deptResult">${deptState.submitted ? renderModuleResult(block, deptState) : ""}</div>
+      </section>` : ""}
+  `;
+
+  bindQuestionEvents(moduleId);
+  contentView.querySelectorAll("[data-dept-open]").forEach((field) => {
+    field.addEventListener("input", () => {
+      state.openAnswers[field.dataset.deptOpen] = field.value;
+      saveState();
+    });
+  });
+  document.getElementById("submitDept")?.addEventListener("click", () => submitDepartmentBlock(block));
+
+  renderNav();
+  renderObjectives();
+  renderRoadmap();
+  prepareAnimations(contentView);
+  contentView.querySelectorAll(".revealable").forEach((el) => el.classList.add("is-revealed"));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function submitDepartmentBlock(block) {
+  if (!(await requireActiveParticipant())) return;
+  const moduleId = block.id;
+  const deptState = state.modules[moduleId] || { answers: {}, submitted: false };
+  if (block.quiz.length && Object.keys(deptState.answers).length < block.quiz.length) {
+    showToast("Ответьте на все вопросы теста.");
+    return;
+  }
+  deptState.submitted = true;
+  deptState.score = block.quiz.reduce((sum, question, index) => {
+    return sum + (Number(deptState.answers[index]) === question.answer ? 1 : 0);
+  }, 0);
+  state.modules[moduleId] = deptState;
+  saveState();
+  renderDepartmentBlock();
+  updateProgress();
+  // Авто-выгрузка: балл теста → лист «Мини-тесты», открытые кейсы → «Открытые вопросы».
+  if (block.quiz.length) void syncModuleResult(block);
+  void syncDepartmentOpenAnswers(block);
+}
+
+async function syncDepartmentOpenAnswers(block) {
+  if (!RESULTS_ENDPOINT || !validateParticipant({ quiet: true })) return;
+  for (let i = 0; i < block.cases.length; i += 1) {
+    const answer = (state.openAnswers?.[`${block.id}:${i}`] || "").trim();
+    if (!answer) continue;
+    try {
+      await requestServerAction("submitOpenAnswer", {
+        ...getParticipantRequestData(),
+        submittedAt: new Date().toISOString(),
+        build: COURSE_BUILD,
+        moduleId: block.id,
+        moduleTitle: block.title,
+        question: block.cases[i],
+        answer
+      }, { timeout: 20000 });
+    } catch (error) { /* статус не критичен для UX */ }
+  }
 }
 
 function renderModule(index, options = {}) {
