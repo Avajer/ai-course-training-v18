@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v36";
+const COURSE_BUILD = "v37";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -2615,6 +2615,8 @@ const state = loadState();
 let currentView = "module";
 let currentModuleIndex = 0;
 let libraryFilter = "all";
+let deptBlockFilter = null; // фильтр промптов в блоке 20 (null = свой департамент)
+let roadmapCollapsed = true; // карта курса свёрнута по умолчанию (короткая «плашка»)
 let statusMonitorStarted = false;
 let statusCheckInFlight = null;
 
@@ -3452,17 +3454,16 @@ function requestAuth(action, data) {
 
 function renderRoadmap() {
   const locked = !isAuthenticated();
+  const doneCount = modules.filter((m) => state.modules[m.id]?.submitted).length;
   roadmapView.innerHTML = `
-    <div class="roadmap-head">
+    <div class="roadmap-head roadmap-head-compact">
       <div>
         <p class="kicker">Карта курса</p>
-        <h2 class="h2">Учебный маршрут: от понимания ИИ к рабочему шаблону</h2>
+        <h2 class="h2">Учебный маршрут <span class="roadmap-counter">${doneCount}/${modules.length}</span></h2>
       </div>
-      <p>${locked
-        ? "Карта курса видна сразу, но прохождение блоков открывается после обязательной регистрации участника."
-        : "Каждый блок сочетает теорию, диаграмму, практику, рефлексию по рабочей ситуации и усложненную самопроверку."}</p>
+      <button class="roadmap-toggle" type="button" id="roadmapToggle" aria-expanded="${roadmapCollapsed ? "false" : "true"}">${roadmapCollapsed ? "Показать карту ▾" : "Свернуть ▴"}</button>
     </div>
-    <div class="roadmap-grid">
+    <div class="roadmap-grid ${roadmapCollapsed ? "is-collapsed" : ""}">
       ${modules.map((module, index) => {
         const done = Boolean(state.modules[module.id]?.submitted);
         return `
@@ -3476,6 +3477,17 @@ function renderRoadmap() {
       }).join("")}
     </div>
   `;
+
+  document.getElementById("roadmapToggle")?.addEventListener("click", () => {
+    roadmapCollapsed = !roadmapCollapsed;
+    const grid = roadmapView.querySelector(".roadmap-grid");
+    if (grid) grid.classList.toggle("is-collapsed", roadmapCollapsed);
+    const btn = document.getElementById("roadmapToggle");
+    if (btn) {
+      btn.textContent = roadmapCollapsed ? "Показать карту ▾" : "Свернуть ▴";
+      btn.setAttribute("aria-expanded", roadmapCollapsed ? "false" : "true");
+    }
+  });
 
   roadmapView.querySelectorAll("[data-roadmap]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -3500,18 +3512,31 @@ function updateModuleResponseStatus(module) {
   if (openNode) openNode.textContent = getOpenStatusText(module);
 }
 
-async function renderDepartmentBlock() {
+async function renderDepartmentBlock(options = {}) {
   if (!(await requireActiveParticipant())) return;
   const block = getDepartmentBlock();
   if (!block) { showToast("Тематический блок для вашего департамента ещё готовится."); return; }
   currentView = "department";
   const moduleId = block.id;
   const deptId = userDepartmentId();
-  // Промпты департамента (из общей библиотеки), отсортированные по популярности.
-  const deptPrompts = promptLibrary
+  // Свежее открытие блока показывает свой департамент; смена фильтра — выбранный.
+  if (!options.keepScroll) deptBlockFilter = null;
+  const activeFilter = deptBlockFilter || deptId;
+
+  const order = ["universal", ...DEPARTMENTS.map((d) => d.id)];
+  const chipLabel = (id) => id === "universal" ? "Универсальные" : (DEPARTMENTS.find((d) => d.id === id)?.name || id);
+  const present = [];
+  promptLibrary.forEach((p) => { const d = p.dept || "universal"; if (!present.includes(d)) present.push(d); });
+  present.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const blockPrompts = promptLibrary
     .map((p, i) => ({ p, i }))
-    .filter(({ p }) => p.dept === deptId)
-    .sort((a, b) => { const pa = a.p.pop == null ? 50 : a.p.pop, pb = b.p.pop == null ? 50 : b.p.pop; return pa !== pb ? pa - pb : a.i - b.i; });
+    .filter(({ p }) => activeFilter === "all" ? true : (p.dept || "universal") === activeFilter)
+    .sort((a, b) => {
+      const da = order.indexOf(a.p.dept || "universal"), db = order.indexOf(b.p.dept || "universal");
+      if (da !== db) return da - db;
+      const pa = a.p.pop == null ? 50 : a.p.pop, pb = b.p.pop == null ? 50 : b.p.pop;
+      return pa !== pb ? pa - pb : a.i - b.i;
+    });
 
   contentView.innerHTML = `
     <section class="section-band">
@@ -3519,18 +3544,21 @@ async function renderDepartmentBlock() {
       <h2>${escapeHtml(block.title)}</h2>
       ${block.intro ? `<p>${escapeHtml(block.intro)}</p>` : ""}
     </section>
-    ${deptPrompts.length ? `
-      <section class="section-band">
-        <p class="eyebrow">Промпты вашего департамента</p>
-        <h3>Готовые рабочие промпты — от популярных к узким</h3>
-        <p>Замените поля в [квадратных скобках] на свои данные. Эти же промпты есть в общей библиотеке и доступны всем.</p>
-        <div class="prompt-grid">
-          ${deptPrompts.map(({ p, i }) => promptCardHtml(p, i, null, true)).join("")}
-        </div>
-      </section>` : ""}
+    <section class="section-band">
+      <p class="eyebrow">Промпты — от популярных к узким</p>
+      <h3>Готовые рабочие промпты</h3>
+      <p>Замените поля в [квадратных скобках] на свои данные. Все промпты доступны всем — переключайте департамент, чтобы посмотреть и скопировать промпты других блоков.</p>
+      <div class="lib-filter">
+        <button class="lib-chip ${activeFilter === "all" ? "is-active" : ""}" type="button" data-dept-filter="all">Все</button>
+        ${present.map((id) => `<button class="lib-chip ${activeFilter === id ? "is-active" : ""} ${id === deptId ? "is-mine" : ""}" type="button" data-dept-filter="${id}">${escapeHtml(chipLabel(id))}${id === deptId ? " ★" : ""}</button>`).join("")}
+      </div>
+      <div class="prompt-grid" style="margin-top:1rem">
+        ${blockPrompts.length ? blockPrompts.map(({ p, i }) => promptCardHtml(p, i, chipLabel, activeFilter !== "all")).join("") : `<p class="table-empty">Промпты для этого фильтра ещё готовятся.</p>`}
+      </div>
+    </section>
     ${block.cases.length ? `
       <section class="section-band open-question-box">
-        <p class="eyebrow">Кейсы</p>
+        <p class="eyebrow">Кейсы вашего департамента</p>
         <h3>Открытые вопросы по вашей теме</h3>
         ${block.cases.map((caseText, caseIndex) => `
           <label class="open-question">
@@ -3545,6 +3573,9 @@ async function renderDepartmentBlock() {
       </section>` : ""}
   `;
 
+  contentView.querySelectorAll("[data-dept-filter]").forEach((button) => {
+    button.addEventListener("click", () => { deptBlockFilter = button.dataset.deptFilter; renderDepartmentBlock({ keepScroll: true }); });
+  });
   bindPromptCopy(contentView);
   contentView.querySelectorAll("[data-dept-open]").forEach((field) => {
     field.addEventListener("input", () => {
@@ -3559,7 +3590,7 @@ async function renderDepartmentBlock() {
   renderRoadmap();
   prepareAnimations(contentView);
   contentView.querySelectorAll(".revealable").forEach((el) => el.classList.add("is-revealed"));
-  contentView.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!options.keepScroll) contentView.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function submitDepartmentCases(block) {
@@ -4322,7 +4353,7 @@ function bindPromptCopy(root) {
   });
 }
 
-async function renderLibrary() {
+async function renderLibrary(options = {}) {
   if (!(await requireActiveParticipant())) return;
   currentView = "library";
   const myDept = departmentIdFor(state.participant?.department);
@@ -4358,7 +4389,7 @@ async function renderLibrary() {
   `;
 
   contentView.querySelectorAll("[data-lib-filter]").forEach((button) => {
-    button.addEventListener("click", () => { libraryFilter = button.dataset.libFilter; renderLibrary(); });
+    button.addEventListener("click", () => { libraryFilter = button.dataset.libFilter; renderLibrary({ keepScroll: true }); });
   });
 
   bindPromptCopy(contentView);
@@ -4367,7 +4398,8 @@ async function renderLibrary() {
   renderObjectives();
   renderRoadmap();
   prepareAnimations(contentView);
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  // При смене фильтра не прокручиваем наверх — остаёмся на месте.
+  if (!options.keepScroll) window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 // Категория для вопросов из банка мини-тестов (для разбивки по темам в итоге).

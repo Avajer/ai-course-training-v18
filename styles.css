@@ -891,6 +891,34 @@ li::marker { color: var(--accent); }
   justify-content: space-between;
   gap: 0.8rem;
 }
+.roadmap-head-compact { align-items: center; gap: 0.6rem; }
+.roadmap-head-compact .h2 { font-size: 1.15rem; }
+
+.roadmap-counter {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-tint-2);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.roadmap-toggle {
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--glass-2, var(--field-bg));
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+.roadmap-toggle:hover { color: var(--ink); border-color: var(--accent); }
+
+.roadmap-grid.is-collapsed { display: none; }
 
 .roadmap-head p { max-width: 46ch; color: var(--muted); font-size: 0.92rem; }
 
