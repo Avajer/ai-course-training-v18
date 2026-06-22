@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v35";
+const COURSE_BUILD = "v36";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -1052,9 +1052,32 @@ promptLibrary.push(
   }
 );
 
-// Тег департамента у промптов. Сейчас все «universal» (видны всем);
-// в Фазе 3 часть промптов получит тег конкретного департамента.
-// Все промпты остаются видимыми и сохраняемыми для всех — тег только для фильтра.
+// Промпты внутреннего контроля и аудита (push выше) — категория КРД.
+// Видны и копируемы всем; тег нужен для фильтра в библиотеке и блока департамента.
+// pop — порядок в подборке: меньше = популярнее (показывается выше).
+promptLibrary.slice(9).forEach((p) => { p.dept = "krd"; if (p.pop == null) p.pop = 50; });
+
+// Дополнительные узкие промпты КРД (госсектор + строительство) + дебиторка (золотая рамка).
+promptLibrary.push(
+  { dept: "krd", pop: 1, gold: true, note: true,
+    title: "Анализ дебиторской задолженности",
+    use: "Когда нужно разобрать дебиторскую задолженность: структура по срокам, риски, что проверить.",
+    text: "Ты аналитик по работе с дебиторской задолженностью. Разбери обезличенную выгрузку.\n\nИсходные данные: [вставьте обезличенные данные: код контрагента, сумма, дата возникновения, срок оплаты]\nЦель анализа: [взыскание / резервы / контроль / отчёт]\n\nВерни результат:\n1. Структура по срокам (до 30, 31–90, 91–180, свыше 180 дней) и доля каждой группы.\n2. Крупнейшие позиции и их доля в общей сумме.\n3. Просроченная и сомнительная задолженность: признаки.\n4. Риски: безнадёжная, спорная, недостаток подтверждающих документов.\n5. Рекомендации: что проверить, какие документы запросить, по каким позициям нужны меры.\n6. Вопросы для уточнения.\n\nОграничения: не делай вывод о безнадёжности без подтверждения; отделяй факт из данных от предположения." },
+  { dept: "krd", pop: 90, note: true,
+    title: "Проверка авансовых отчётов",
+    use: "Когда нужно проверить авансовый отчёт на полноту и соответствие нормативу.",
+    text: "Ты специалист по внутреннему контролю расходов. Проверь авансовый отчёт.\n\nДанные отчёта: [вставьте обезличенные данные: статьи расходов, суммы, перечень подтверждающих документов]\nНорматив или лимиты: [если есть]\n\nВерни таблицу: статья расхода | сумма | есть ли подтверждающий документ | соответствие нормативу | риск или замечание | что проверить.\n\nДополнительно:\n1. Расходы без подтверждающих документов.\n2. Превышения лимитов и нетиповые статьи.\n3. Признаки задвоения или несоответствия датам.\n4. Вопросы для уточнения у подотчётного лица.\n\nОграничения: отсутствие документа — это пробел, а не доказательство нарушения; отделяй факт от предположения." },
+  { dept: "krd", pop: 92,
+    title: "Признаки дробления закупок",
+    use: "Когда нужно проверить закупки на признаки искусственного дробления под лимит.",
+    text: "Ты аналитик по контролю закупок. Проверь обезличенный перечень закупок на признаки дробления.\n\nДанные: [вставьте обезличенные данные: предмет, сумма, дата, код контрагента, способ закупки]\nПорог прямой закупки: [сумма]\n\nВерни:\n1. Группы закупок, близких по предмету, контрагенту и периоду, с суммами около порога.\n2. Признаки возможного дробления (последовательность дат, один контрагент, дробление единой потребности).\n3. Уровень риска по каждой группе.\n4. Что проверить и какие документы запросить (обоснование потребности, план закупок).\n\nОграничения: близость к порогу — индикатор риска, а не доказанное нарушение; вывод подтверждается документами." },
+  { dept: "krd", pop: 95,
+    title: "Проверка объёмов по актам КС-2/КС-3",
+    use: "Когда нужно сверить объёмы и стоимость по строительным актам выполненных работ.",
+    text: "Ты специалист по контролю в строительстве. Помоги сверить акт выполненных работ.\n\nДанные: [вставьте обезличенные данные из КС-2/КС-3: позиции, объёмы, расценки, суммы]\nСметная или договорная основа: [плановые объёмы и расценки, если есть]\n\nВерни таблицу: позиция | объём по акту | объём по смете/договору | расценка | сумма | отклонение | риск или замечание | что проверить.\n\nДополнительно:\n1. Позиции с отклонением объёмов или расценок.\n2. Работы, отсутствующие в смете или договоре.\n3. Признаки задвоения или повторного предъявления.\n4. Что проверить по исполнительной документации и на объекте.\n\nОграничения: расхождение в данных — повод для проверки, а не подтверждённое завышение; не делай вывод без исполнительной документации." }
+);
+
+// Остальные промпты — универсальные (видны всем).
 promptLibrary.forEach((prompt) => { if (!prompt.dept) prompt.dept = "universal"; });
 
 const finalQuestions = [
@@ -2818,7 +2841,7 @@ function renderAuthRequired() {
 
 function renderNav() {
   const locked = !isAuthenticated();
-  moduleNav.innerHTML = modules.map((module, index) => {
+  let html = modules.map((module, index) => {
     const done = Boolean(state.modules[module.id]?.submitted);
     return `
       <button class="module-button ${locked ? "is-locked" : ""} ${currentView === "module" && currentModuleIndex === index ? "is-active" : ""}" type="button" data-module="${index}" aria-label="${locked ? "Доступ после регистрации. " : ""}${module.title}">
@@ -2829,11 +2852,29 @@ function renderNav() {
     `;
   }).join("");
 
+  // Блок 20 — тематический блок департамента (если у департамента есть контент).
+  if (hasDepartmentBlock()) {
+    const deptName = DEPARTMENTS.find((d) => d.id === userDepartmentId())?.name || "Мой департамент";
+    html += `
+      <button class="module-button dept-nav ${currentView === "department" ? "is-active" : ""}" type="button" data-dept-block="1" aria-label="${escapeHtml(deptName)}">
+        <span class="module-index">20</span>
+        <span class="module-title">${escapeHtml(deptName)}</span>
+        <span class="module-state"></span>
+      </button>
+    `;
+  }
+
+  moduleNav.innerHTML = html;
+
   moduleNav.querySelectorAll("[data-module]").forEach((button) => {
     button.addEventListener("click", async () => {
       if (!(await requireActiveParticipant())) return;
       renderModule(Number(button.dataset.module));
     });
+  });
+  moduleNav.querySelector("[data-dept-block]")?.addEventListener("click", async () => {
+    if (!(await requireActiveParticipant())) return;
+    renderDepartmentBlock();
   });
 }
 
@@ -3465,14 +3506,28 @@ async function renderDepartmentBlock() {
   if (!block) { showToast("Тематический блок для вашего департамента ещё готовится."); return; }
   currentView = "department";
   const moduleId = block.id;
-  const deptState = state.modules[moduleId] || { answers: {}, submitted: false };
+  const deptId = userDepartmentId();
+  // Промпты департамента (из общей библиотеки), отсортированные по популярности.
+  const deptPrompts = promptLibrary
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => p.dept === deptId)
+    .sort((a, b) => { const pa = a.p.pop == null ? 50 : a.p.pop, pb = b.p.pop == null ? 50 : b.p.pop; return pa !== pb ? pa - pb : a.i - b.i; });
 
   contentView.innerHTML = `
     <section class="section-band">
-      <p class="eyebrow">Тематический блок · ${escapeHtml(state.participant.department || "")}</p>
+      <p class="eyebrow">Блок 20 · ${escapeHtml(state.participant.department || "")}</p>
       <h2>${escapeHtml(block.title)}</h2>
       ${block.intro ? `<p>${escapeHtml(block.intro)}</p>` : ""}
     </section>
+    ${deptPrompts.length ? `
+      <section class="section-band">
+        <p class="eyebrow">Промпты вашего департамента</p>
+        <h3>Готовые рабочие промпты — от популярных к узким</h3>
+        <p>Замените поля в [квадратных скобках] на свои данные. Эти же промпты есть в общей библиотеке и доступны всем.</p>
+        <div class="prompt-grid">
+          ${deptPrompts.map(({ p, i }) => promptCardHtml(p, i, null, true)).join("")}
+        </div>
+      </section>` : ""}
     ${block.cases.length ? `
       <section class="section-band open-question-box">
         <p class="eyebrow">Кейсы</p>
@@ -3483,55 +3538,39 @@ async function renderDepartmentBlock() {
             <textarea data-dept-open="${moduleId}:${caseIndex}" placeholder="Ответьте своими словами. Ответ уйдёт в таблицу на проверку.">${escapeHtml(state.openAnswers?.[`${moduleId}:${caseIndex}`] || "")}</textarea>
           </label>
         `).join("")}
-      </section>` : ""}
-    ${block.quiz.length ? `
-      <section class="section-band quiz-card">
-        <h3>Тест по теме</h3>
-        ${block.quiz.map((question, questionIndex) => renderQuestion(moduleId, question, questionIndex, deptState)).join("")}
         <div class="lesson-actions">
-          <button class="primary-button" type="button" id="submitDept">Проверить результат</button>
+          <button class="primary-button" type="button" id="submitDeptCases">Отправить ответы</button>
         </div>
-        <div id="deptResult">${deptState.submitted ? renderModuleResult(block, deptState) : ""}</div>
+        <p class="field-status" id="deptCasesStatus"></p>
       </section>` : ""}
   `;
 
-  bindQuestionEvents(moduleId);
+  bindPromptCopy(contentView);
   contentView.querySelectorAll("[data-dept-open]").forEach((field) => {
     field.addEventListener("input", () => {
       state.openAnswers[field.dataset.deptOpen] = field.value;
       saveState();
     });
   });
-  document.getElementById("submitDept")?.addEventListener("click", () => submitDepartmentBlock(block));
+  document.getElementById("submitDeptCases")?.addEventListener("click", () => submitDepartmentCases(block));
 
   renderNav();
   renderObjectives();
   renderRoadmap();
   prepareAnimations(contentView);
   contentView.querySelectorAll(".revealable").forEach((el) => el.classList.add("is-revealed"));
-  // Прокручиваем к самому блоку, а не к началу страницы (иначе виден только герой-блок).
   contentView.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function submitDepartmentBlock(block) {
+async function submitDepartmentCases(block) {
   if (!(await requireActiveParticipant())) return;
-  const moduleId = block.id;
-  const deptState = state.modules[moduleId] || { answers: {}, submitted: false };
-  if (block.quiz.length && Object.keys(deptState.answers).length < block.quiz.length) {
-    showToast("Ответьте на все вопросы теста.");
-    return;
-  }
-  deptState.submitted = true;
-  deptState.score = block.quiz.reduce((sum, question, index) => {
-    return sum + (Number(deptState.answers[index]) === question.answer ? 1 : 0);
-  }, 0);
-  state.modules[moduleId] = deptState;
-  saveState();
-  renderDepartmentBlock();
-  updateProgress();
-  // Авто-выгрузка: балл теста → лист «Мини-тесты», открытые кейсы → «Открытые вопросы».
-  if (block.quiz.length) void syncModuleResult(block);
-  void syncDepartmentOpenAnswers(block);
+  const answered = block.cases.some((_caseText, index) => (state.openAnswers?.[`${block.id}:${index}`] || "").trim());
+  if (!answered) { showToast("Заполните хотя бы один кейс перед отправкой."); return; }
+  const status = document.getElementById("deptCasesStatus");
+  if (status) status.textContent = "Отправляем ответы…";
+  await syncDepartmentOpenAnswers(block);
+  if (status) status.textContent = "Ответы по кейсам отправлены в таблицу.";
+  showToast("Ответы по кейсам отправлены.");
 }
 
 async function syncDepartmentOpenAnswers(block) {
@@ -4252,6 +4291,37 @@ async function syncModuleResult(module) {
   }
 }
 
+// Карточка промпта (используется в библиотеке и в блоке департамента).
+function promptCardHtml(p, i, chipLabel, hideTag) {
+  return `
+    <article class="prompt-card ${p.gold ? "is-gold" : ""}">
+      <div>
+        <p class="eyebrow">${escapeHtml(p.use)}</p>
+        <h3>${escapeHtml(p.title)}</h3>
+        ${!hideTag && p.dept && p.dept !== "universal" ? `<span class="lib-tag">${escapeHtml(chipLabel ? chipLabel(p.dept) : p.dept)}</span>` : ""}
+      </div>
+      <pre id="prompt-${i}">${escapeHtml(p.text)}</pre>
+      ${p.note ? `<p class="lib-privacy">⚠️ В этом промпте возможны персональные или служебные данные. Обезличьте их сами перед отправкой в ИИ.</p>` : ""}
+      <button class="copy-button" type="button" data-copy="${i}">Скопировать</button>
+    </article>`;
+}
+
+function bindPromptCopy(root) {
+  (root || contentView).querySelectorAll("[data-copy]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const prompt = promptLibrary[Number(button.dataset.copy)].text;
+      try {
+        if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(prompt); }
+        else { copyWithFallback(prompt); }
+        showToast("Промпт скопирован.");
+      } catch {
+        try { copyWithFallback(prompt); showToast("Промпт скопирован."); }
+        catch { showToast("Не удалось скопировать автоматически. Выделите текст вручную."); }
+      }
+    });
+  });
+}
+
 async function renderLibrary() {
   if (!(await requireActiveParticipant())) return;
   currentView = "library";
@@ -4263,6 +4333,13 @@ async function renderLibrary() {
   const filter = (libraryFilter === "all" || present.includes(libraryFilter)) ? libraryFilter : "all";
   const chipLabel = (id) => id === "universal" ? "Универсальные" : (DEPARTMENTS.find((d) => d.id === id)?.name || id);
   const visible = promptLibrary.map((p, i) => ({ p, i })).filter(({ p }) => filter === "all" || (p.dept || "universal") === filter);
+  // Сортировка: по департаменту (порядок выше), затем по популярности (pop), затем по позиции.
+  visible.sort((a, b) => {
+    const da = order.indexOf(a.p.dept || "universal"), db = order.indexOf(b.p.dept || "universal");
+    if (da !== db) return da - db;
+    const pa = a.p.pop == null ? 50 : a.p.pop, pb = b.p.pop == null ? 50 : b.p.pop;
+    return pa !== pb ? pa - pb : a.i - b.i;
+  });
   const showChips = present.length > 1; // фильтр нужен, только когда появятся департаментские промпты
 
   contentView.innerHTML = `
@@ -4276,17 +4353,7 @@ async function renderLibrary() {
       </div>` : ""}
     </section>
     <section class="prompt-grid">
-      ${visible.map(({ p, i }) => `
-        <article class="prompt-card">
-          <div>
-            <p class="eyebrow">${escapeHtml(p.use)}</p>
-            <h3>${escapeHtml(p.title)}</h3>
-            ${p.dept && p.dept !== "universal" ? `<span class="lib-tag">${escapeHtml(chipLabel(p.dept))}</span>` : ""}
-          </div>
-          <pre id="prompt-${i}">${escapeHtml(p.text)}</pre>
-          <button class="copy-button" type="button" data-copy="${i}">Скопировать</button>
-        </article>
-      `).join("")}
+      ${visible.map(({ p, i }) => promptCardHtml(p, i, chipLabel)).join("")}
     </section>
   `;
 
@@ -4294,26 +4361,7 @@ async function renderLibrary() {
     button.addEventListener("click", () => { libraryFilter = button.dataset.libFilter; renderLibrary(); });
   });
 
-  contentView.querySelectorAll("[data-copy]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const prompt = promptLibrary[Number(button.dataset.copy)].text;
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(prompt);
-        } else {
-          copyWithFallback(prompt);
-        }
-        showToast("Промпт скопирован.");
-      } catch {
-        try {
-          copyWithFallback(prompt);
-          showToast("Промпт скопирован.");
-        } catch {
-          showToast("Не удалось скопировать автоматически. Выделите текст вручную.");
-        }
-      }
-    });
-  });
+  bindPromptCopy(contentView);
 
   renderNav();
   renderObjectives();

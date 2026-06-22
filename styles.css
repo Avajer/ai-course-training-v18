@@ -2077,6 +2077,30 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
   font-weight: 600;
 }
 
+/* Золотая рамка для приоритетных промптов (например, анализ дебиторской задолженности). */
+.prompt-card.is-gold {
+  border: 2px solid #c8a04b;
+  box-shadow: 0 0 0 1px rgba(200, 160, 75, 0.25), 0 10px 26px rgba(200, 160, 75, 0.14);
+  background: linear-gradient(180deg, rgba(200, 160, 75, 0.08), transparent 60%);
+}
+.prompt-card.is-gold h3::after {
+  content: "★";
+  margin-left: 0.4rem;
+  color: #c8a04b;
+}
+
+/* Предупреждение о персональных/служебных данных в промпте. */
+.lib-privacy {
+  margin: 0.1rem 0 0.2rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(217, 138, 43, 0.1);
+  border: 1px solid rgba(217, 138, 43, 0.32);
+  color: var(--ink);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .prompt-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
