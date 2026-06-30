@@ -1,7 +1,7 @@
 /* ==========================================================================
    ИИ-ПРАКТИКУМ — слой расширений (features.js)
    Загружается ПОСЛЕ script.js. Работает на статике (GitHub Pages):
-   тренажёр промптов, песочница (свой API-ключ), личная библиотека,
+   тренажёр промптов, защищённая песочница модели, личная библиотека,
    карточки глоссария, поиск, диагностика, сертификат, онбординг,
    мобильное меню, радар результатов, конфетти.
    Любая ошибка в одном модуле не должна ронять базовый курс — всё в try.
@@ -9,9 +9,8 @@
 (function () {
   "use strict";
 
-  var COURSE_VERSION = "v39";
+  var COURSE_VERSION = "v40";
   var LS = {
-    settings: "aiCourseSandboxSettings",
     mylib: "aiCourseMyPrompts",
     tour: "aiCourseTourSeenV1",
     pretest: "aiCoursePretestDone",
@@ -167,21 +166,116 @@
       '</div>';
   }
 
-  /* ----- песочница: настройки провайдера ----- */
-  var PROVIDERS = {
-    openrouter: { label: "OpenRouter (проще всего из браузера)", base: "https://openrouter.ai/api/v1", model: "meta-llama/llama-3.3-70b-instruct" },
-    openai: { label: "OpenAI", base: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-    qwen: { label: "Qwen (DashScope, intl)", base: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
-    custom: { label: "Свой OpenAI-совместимый endpoint", base: "", model: "" }
-  };
-  function getSettings() {
-    var s = lsGet(LS.settings, null);
-    if (!s) s = { provider: "openrouter", base: PROVIDERS.openrouter.base, model: PROVIDERS.openrouter.model, key: "" };
-    return s;
+  /* ----- песочница: защищённый серверный мост Apps Script ----- */
+  var modelBridgeFrame = null;
+  var modelBridgeReady = null;
+  var modelBridgeReadyResolve = null;
+  var modelBridgeRequests = {};
+  var modelBridgeListenerBound = false;
+
+  function isTrustedBridgeOrigin(origin) {
+    return /^https:\/\/script\.google\.com$/.test(origin) || /^https:\/\/[^/]+\.googleusercontent\.com$/.test(origin);
+  }
+
+  function bindModelBridgeListener() {
+    if (modelBridgeListenerBound) return;
+    modelBridgeListenerBound = true;
+    window.addEventListener("message", function (event) {
+      if (!modelBridgeFrame || event.source !== modelBridgeFrame.contentWindow || !isTrustedBridgeOrigin(event.origin)) return;
+      var data = event.data || {};
+      if (data.type === "ai-course-model-ready") {
+        if (modelBridgeReadyResolve) modelBridgeReadyResolve();
+        return;
+      }
+      if (data.type !== "ai-course-model-response" || !data.requestId) return;
+      var pending = modelBridgeRequests[data.requestId];
+      if (!pending) return;
+      delete modelBridgeRequests[data.requestId];
+      clearTimeout(pending.timer);
+      if (data.ok) pending.resolve(data);
+      else pending.reject(new Error(data.error || "Модель не вернула ответ."));
+    });
+  }
+
+  function ensureModelBridge() {
+    if (modelBridgeReady) return modelBridgeReady;
+    if (typeof RESULTS_ENDPOINT === "undefined" || !RESULTS_ENDPOINT) {
+      return Promise.reject(new Error("Не указан адрес Apps Script."));
+    }
+    bindModelBridgeListener();
+    modelBridgeReady = new Promise(function (resolve, reject) {
+      modelBridgeReadyResolve = resolve;
+      modelBridgeFrame = document.createElement("iframe");
+      modelBridgeFrame.title = "Серверный мост модели";
+      modelBridgeFrame.setAttribute("aria-hidden", "true");
+      modelBridgeFrame.style.display = "none";
+      modelBridgeFrame.src = RESULTS_ENDPOINT + "?action=modelBridge&origin=" + encodeURIComponent(location.origin);
+      modelBridgeFrame.onerror = function () { reject(new Error("Не удалось открыть серверный мост.")); };
+      document.body.appendChild(modelBridgeFrame);
+      setTimeout(function () { reject(new Error("Серверный мост не ответил вовремя.")); }, 15000);
+    });
+    return modelBridgeReady;
+  }
+
+  function requestModel(prompt) {
+    var st = getState();
+    if (!st || !st.participant || !st.participant.authenticated) {
+      return Promise.reject(new Error("Сначала войдите в учетную запись курса."));
+    }
+    return ensureModelBridge().then(function () {
+      return new Promise(function (resolve, reject) {
+        var requestId = "model_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+        var timer = setTimeout(function () {
+          delete modelBridgeRequests[requestId];
+          reject(new Error("Модель не ответила за 45 секунд."));
+        }, 45000);
+        modelBridgeRequests[requestId] = { resolve: resolve, reject: reject, timer: timer };
+        modelBridgeFrame.contentWindow.postMessage({
+          type: "ai-course-model-request",
+          requestId: requestId,
+          prompt: prompt,
+          participant: {
+            name: st.participant.name,
+            department: st.participant.department || "",
+            passwordHash: st.participant.passwordHash
+          }
+        }, "*");
+      });
+    });
+  }
+
+  function requestModelHealth() {
+    if (typeof RESULTS_ENDPOINT === "undefined" || !RESULTS_ENDPOINT) {
+      return Promise.reject(new Error("Не указан адрес Apps Script."));
+    }
+    return new Promise(function (resolve, reject) {
+      var callbackName = "aiCourseModelHealth_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      var script = document.createElement("script");
+      var timer = setTimeout(function () {
+        cleanup();
+        reject(new Error("Apps Script не ответил на проверку подключения."));
+      }, 12000);
+
+      function cleanup() {
+        clearTimeout(timer);
+        if (script.parentNode) script.parentNode.removeChild(script);
+        try { delete window[callbackName]; } catch (e) { window[callbackName] = undefined; }
+      }
+
+      window[callbackName] = function (payload) {
+        cleanup();
+        resolve(payload || {});
+      };
+      script.onerror = function () {
+        cleanup();
+        reject(new Error("Не удалось открыть Apps Script. Проверьте публикацию Web App."));
+      };
+      script.src = RESULTS_ENDPOINT + "?action=modelHealth&callback=" + encodeURIComponent(callbackName) + "&_=" + Date.now();
+      document.head.appendChild(script);
+    });
   }
 
   function openSandbox(prefill) {
-    var s = getSettings();
     var content =
       '<div>' +
         '<span class="feat-section-label">Ваш промпт</span>' +
@@ -189,90 +283,69 @@
       '</div>' +
       '<div class="feat-actions">' +
         '<button class="feat-btn" id="sbCheck" type="button">Проверить промпт</button>' +
-        '<button class="feat-btn sec" id="sbRun" type="button">▶ Отправить модели</button>' +
+        '<button class="feat-btn sec" id="sbRun" type="button">Отправить модели</button>' +
         '<button class="feat-btn sec" id="sbSave" type="button">★ В мою библиотеку</button>' +
-        '<button class="feat-btn ghost" id="sbKey" type="button">⚙ Ключ API</button>' +
+        '<button class="feat-btn ghost" id="sbKey" type="button">О подключении</button>' +
       '</div>' +
       '<div id="sbResult"></div>' +
       '<div><span class="feat-section-label">Ответ модели</span>' +
-        '<div class="feat-sandbox-out is-empty" id="sbOut">Здесь появится ответ. Без ключа API работает тренажёр-оценка; с ключом — живой ответ модели.</div>' +
+        '<div class="feat-sandbox-out is-empty" id="sbOut">Здесь появится ответ подключенной модели. Ключ хранится на сервере и не передается в браузер.</div>' +
       '</div>' +
       '<div id="sbKeyBox"></div>';
 
     openPanel({
       title: "🧪 Песочница промптов",
-      subtitle: "Оцените промпт мгновенно или отправьте его реальной модели (свой ключ хранится только в браузере).",
+      subtitle: "Оцените промпт по 7 опорам или отправьте его подключенной модели DeepSeek.",
       content: content,
       onMount: function (root) {
         var input = $("#sbInput", root);
         $("#sbCheck", root).addEventListener("click", function () { renderTrainerResult($("#sbResult", root), input.value); });
         $("#sbRun", root).addEventListener("click", function () { runSandbox(input.value, $("#sbOut", root), $("#sbRun", root)); });
         $("#sbSave", root).addEventListener("click", function () { saveToMyLib(input.value); });
-        $("#sbKey", root).addEventListener("click", function () { toggleKeyBox($("#sbKeyBox", root)); });
+        $("#sbKey", root).addEventListener("click", function () { toggleModelInfo($("#sbKeyBox", root)); });
         if (prefill) renderTrainerResult($("#sbResult", root), prefill);
       }
     });
   }
 
-  function toggleKeyBox(host) {
+  function toggleModelInfo(host) {
     if (host.firstChild) { host.innerHTML = ""; return; }
-    var s = getSettings();
-    var opts = Object.keys(PROVIDERS).map(function (k) {
-      return '<option value="' + k + '"' + (s.provider === k ? " selected" : "") + '>' + esc(PROVIDERS[k].label) + '</option>';
-    }).join("");
     host.innerHTML =
       '<div class="feat-key-box">' +
-        '<label>Провайдер<select class="feat-input" id="kProvider">' + opts + '</select></label>' +
-        '<label>Endpoint (base URL)<input class="feat-input" id="kBase" value="' + esc(s.base) + '" placeholder="https://…/v1"></label>' +
-        '<label>Модель<input class="feat-input" id="kModel" value="' + esc(s.model) + '" placeholder="например, gpt-4o-mini"></label>' +
-        '<label>API-ключ<input class="feat-input" id="kKey" type="password" value="' + esc(s.key) + '" placeholder="sk-…"></label>' +
-        '<div class="feat-actions"><button class="feat-btn" id="kSave" type="button">Сохранить</button>' +
-        '<button class="feat-btn ghost" id="kClear" type="button">Удалить ключ</button></div>' +
-        '<p class="feat-key-note">Ключ и настройки хранятся только в этом браузере (localStorage) и отправляются напрямую провайдеру. Некоторые провайдеры блокируют запросы из браузера (CORS) — для веб-версии надёжнее всего OpenRouter. Не используйте рабочие/секретные ключи на общем компьютере.</p>' +
+        '<strong>Подключенная модель</strong>' +
+        '<p class="feat-key-note">Запрос проходит через защищенный Google Apps Script. API-ключ находится в свойствах серверного проекта и не виден участникам, исходному коду GitHub Pages или инструментам браузера.</p>' +
+        '<p class="feat-key-note">Доступ разрешен только зарегистрированным активным участникам курса. Не отправляйте конфиденциальные сведения, если модельный контур не согласован вашей организацией.</p>' +
+        '<button class="feat-btn sec" id="sbModelHealth" type="button">Проверить подключение</button>' +
+        '<div class="feat-key-note" id="sbModelHealthOut"></div>' +
       '</div>';
-    var prov = $("#kProvider", host);
-    prov.addEventListener("change", function () {
-      var p = PROVIDERS[prov.value];
-      if (p && prov.value !== "custom") { $("#kBase", host).value = p.base; $("#kModel", host).value = p.model; }
-    });
-    $("#kSave", host).addEventListener("click", function () {
-      lsSet(LS.settings, { provider: prov.value, base: $("#kBase", host).value.trim().replace(/\/$/, ""), model: $("#kModel", host).value.trim(), key: $("#kKey", host).value.trim() });
-      toast("Настройки песочницы сохранены."); host.innerHTML = "";
-    });
-    $("#kClear", host).addEventListener("click", function () {
-      var cur = getSettings(); cur.key = ""; lsSet(LS.settings, cur); $("#kKey", host).value = ""; toast("Ключ удалён.");
+    $("#sbModelHealth", host).addEventListener("click", function () {
+      var out = $("#sbModelHealthOut", host);
+      out.textContent = "Проверяю Apps Script...";
+      requestModelHealth()
+        .then(function (health) {
+          if (!health || health.ok === false) {
+            out.textContent = "Apps Script ответил ошибкой: " + (health && health.error || "нет подробностей");
+            return;
+          }
+          var status = health.modelConfigured ? "ключ найден" : "ключ не найден";
+          out.textContent = "Статус: " + status + ". Модель: " + (health.modelId || "не указана") + ". API: " + (health.apiBase || "не указан") + ". " + (health.note || "");
+        })
+        .catch(function (error) {
+          out.textContent = error.message || String(error);
+        });
     });
   }
 
   function runSandbox(prompt, out, btn) {
     var text = (prompt || "").trim();
     if (!text) { toast("Введите промпт."); return; }
-    var s = getSettings();
-    if (!s.key) {
-      out.classList.remove("is-empty");
-      out.innerHTML = '<b>Ключ API не задан.</b> Нажмите «⚙ Ключ API», чтобы подключить модель. А пока — оценка тренажёра ниже.';
-      var res = $("#sbResult"); if (res) renderTrainerResult(res, text);
-      return;
-    }
     out.classList.remove("is-empty");
     out.innerHTML = '<span class="typing">Запрашиваю ответ модели…</span>';
     btn.disabled = true;
-    fetch(s.base + "/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + s.key },
-      body: JSON.stringify({ model: s.model, messages: [{ role: "user", content: text }], temperature: 0.4, stream: false })
-    }).then(function (r) {
-      return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
-    }).then(function (res) {
-      if (!res.ok) {
-        var msg = (res.j && res.j.error && (res.j.error.message || res.j.error)) || ("HTTP " + res.status);
-        out.innerHTML = '<b style="color:var(--bad)">Ошибка:</b> ' + esc(String(msg));
-        return;
-      }
-      var content = res.j && res.j.choices && res.j.choices[0] && (res.j.choices[0].message ? res.j.choices[0].message.content : res.j.choices[0].text);
-      out.textContent = content || "Пустой ответ модели.";
+    requestModel(text).then(function (res) {
+      out.textContent = res.content || "Пустой ответ модели.";
     }).catch(function (e) {
-      out.innerHTML = '<b style="color:var(--bad)">Не удалось получить ответ.</b> Часто это блокировка из браузера (CORS) или неверный endpoint/ключ. Попробуйте OpenRouter. <br><small style="color:var(--soft)">' + esc(String(e && e.message || e)) + '</small>';
+      out.innerHTML = '<b style="color:var(--bad)">Не удалось получить ответ.</b> <small style="color:var(--soft)">' + esc(String(e && e.message || e)) + '</small>';
     }).finally(function () { btn.disabled = false; });
   }
 
@@ -830,7 +903,7 @@
      ========================================================================= */
   var TOUR = [
     { t: "Добро пожаловать 👋", b: "Это практический курс по работе с нейросетями. Слева — цели, прогресс и блоки. Проходите по порядку и выполняйте практику." },
-    { t: "Тренажёр и песочница 🧪", b: "В любой момент откройте «Песочницу»: соберите промпт и получите мгновенную оценку по 7 опорам. С вашим API-ключом можно отправить запрос реальной модели." },
+    { t: "Тренажёр и песочница 🧪", b: "В любой момент откройте «Песочницу»: соберите промпт, получите оценку по 7 опорам и отправьте запрос подключенной модели без ввода личного API-ключа." },
     { t: "Карточки и поиск 🔎", b: "Повторяйте термины во флеш-карточках, ищите по всему курсу и сохраняйте удачные промпты в личную библиотеку." },
     { t: "Сертификат 🎓", b: "После итогового теста получите именной сертификат — печать в PDF или картинкой. Готовы начать?" }
   ];

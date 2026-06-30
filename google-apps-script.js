@@ -4,6 +4,11 @@ const MODULE_RESULTS_SHEET = 'Мини-тесты';
 const OPEN_ANSWERS_SHEET = 'Открытые вопросы';
 const PRACTICE_ANSWERS_SHEET = 'Практические задания';
 const USERS_SHEET = 'Пользователи';
+const MODEL_USAGE_SHEET = 'Запросы к модели';
+const MODEL_RATE_LIMIT_PER_MINUTE = 12;
+const MODEL_MAX_PROMPT_LENGTH = 12000;
+const MODEL_API_BASE_DEFAULT = 'https://api.deepseek.com';
+const MODEL_ID_DEFAULT = 'deepseek-chat';
 
 // Необязательно: задайте секрет, чтобы статистику в admin.html видел только владелец.
 // Пустая строка = статистика доступна без ключа. Если задать, в admin.html введите тот же ключ.
@@ -15,7 +20,9 @@ function doGet(e) {
   let response;
 
   try {
-    if (action === 'register') {
+    if (action === 'modelBridge') {
+      return renderModelBridge_(e.parameter.origin || '');
+    } else if (action === 'register') {
       response = registerUser_({
         name: e.parameter.name || '',
         department: e.parameter.department || '',
@@ -34,7 +41,7 @@ function doGet(e) {
     } else if (action === 'health') {
       response = {
         ok: true,
-        version: '2026-06-15-v3',
+        version: '2026-06-30-v4',
         capabilities: {
           register: true,
           login: true,
@@ -44,9 +51,13 @@ function doGet(e) {
           submitFinalSummary: true,
           submitFinalAnswers: true,
           submitOpenAnswer: true,
-          submitPracticeAnswer: true
+          submitPracticeAnswer: true,
+          modelBridge: true,
+          modelHealth: true
         }
       };
+    } else if (action === 'modelHealth') {
+      response = getModelHealth_();
     } else if (action === 'submitModuleResult') {
       response = submitModuleResultGet_(e.parameter);
     } else if (action === 'submitFinalSummary') {
@@ -69,6 +80,172 @@ function doGet(e) {
   return ContentService
     .createTextOutput(callback + '(' + JSON.stringify(response) + ');')
     .setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
+
+function renderModelBridge_(requestedOrigin) {
+  const allowedOrigin = resolveAllowedCourseOrigin_(requestedOrigin);
+  const originJson = JSON.stringify(allowedOrigin).replace(/</g, '\\u003c');
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+<script>
+(function () {
+  'use strict';
+  var parentOrigin = ${originJson};
+  function send(payload) { parent.postMessage(payload, parentOrigin); }
+  window.addEventListener('message', function (event) {
+    if (event.source !== parent || event.origin !== parentOrigin) return;
+    var data = event.data || {};
+    if (data.type !== 'ai-course-model-request' || !data.requestId) return;
+    google.script.run
+      .withSuccessHandler(function (result) {
+        send({
+          type: 'ai-course-model-response',
+          requestId: data.requestId,
+          ok: Boolean(result && result.ok),
+          content: result && result.content || '',
+          model: result && result.model || '',
+          error: result && result.error || ''
+        });
+      })
+      .withFailureHandler(function (error) {
+        send({
+          type: 'ai-course-model-response',
+          requestId: data.requestId,
+          ok: false,
+          error: String(error && error.message || error || 'Ошибка серверного моста.')
+        });
+      })
+      .callModelProxy({ prompt: data.prompt || '', participant: data.participant || {} });
+  });
+  send({ type: 'ai-course-model-ready' });
+})();
+<\/script></body></html>`;
+
+  return HtmlService
+    .createHtmlOutput(html)
+    .setTitle('Модельный мост курса')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function resolveAllowedCourseOrigin_(requestedOrigin) {
+  const origin = String(requestedOrigin || '').trim();
+  const allowed = [
+    'https://avajer.github.io',
+    'http://127.0.0.1:8771',
+    'http://localhost:8771'
+  ];
+  return allowed.indexOf(origin) >= 0 ? origin : allowed[0];
+}
+
+function callModelProxy(payload) {
+  const participant = payload && payload.participant || {};
+  const userCheck = findUser_(participant.name || '', participant.passwordHash || '');
+  if (!userCheck.ok) return userCheck;
+
+  const prompt = String(payload && payload.prompt || '').trim();
+  if (!prompt) return { ok: false, error: 'Введите промпт.' };
+  if (prompt.length > MODEL_MAX_PROMPT_LENGTH) {
+    return { ok: false, error: `Промпт длиннее ${MODEL_MAX_PROMPT_LENGTH} символов. Сократите текст.` };
+  }
+
+  const rate = checkModelRateLimit_(userCheck.name);
+  if (!rate.ok) return rate;
+
+  const properties = PropertiesService.getScriptProperties();
+  const apiKey = properties.getProperty('MODEL_API_KEY') || '';
+  const apiBase = properties.getProperty('MODEL_API_BASE') || MODEL_API_BASE_DEFAULT;
+  const modelId = properties.getProperty('MODEL_ID') || MODEL_ID_DEFAULT;
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: 'Модель не настроена: в Apps Script -> Project Settings -> Script Properties нужно добавить MODEL_API_KEY. После этого обязательно опубликуйте новую версию Web App.'
+    };
+  }
+
+  const endpoint = /\/chat\/completions\/?$/i.test(apiBase)
+    ? apiBase.replace(/\/$/, '')
+    : apiBase.replace(/\/$/, '') + '/chat/completions';
+  const startedAt = new Date();
+
+  try {
+    const providerResponse = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + apiKey },
+      payload: JSON.stringify({
+        model: modelId,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.4,
+        stream: false
+      }),
+      muteHttpExceptions: true
+    });
+    const status = providerResponse.getResponseCode();
+    const raw = providerResponse.getContentText();
+    const data = safeJsonParse_(raw, {});
+    if (status < 200 || status >= 300) {
+      const providerError = data && data.error && (data.error.message || data.error) || `HTTP ${status}`;
+      appendModelUsage_(userCheck, modelId, prompt.length, 'ошибка: ' + providerError, startedAt);
+      return { ok: false, error: 'Провайдер модели отклонил запрос: ' + providerError };
+    }
+
+    const choice = data && data.choices && data.choices[0];
+    const content = choice && choice.message ? choice.message.content : choice && choice.text;
+    if (!content) {
+      appendModelUsage_(userCheck, modelId, prompt.length, 'пустой ответ', startedAt);
+      return { ok: false, error: 'Модель вернула пустой ответ.' };
+    }
+
+    appendModelUsage_(userCheck, modelId, prompt.length, 'успешно', startedAt);
+    return { ok: true, content: String(content), model: modelId };
+  } catch (error) {
+    appendModelUsage_(userCheck, modelId, prompt.length, 'ошибка связи', startedAt);
+    return { ok: false, error: 'Не удалось связаться с провайдером модели: ' + String(error) };
+  }
+}
+
+function getModelHealth_() {
+  const properties = PropertiesService.getScriptProperties();
+  const apiKey = properties.getProperty('MODEL_API_KEY') || '';
+  const apiBase = properties.getProperty('MODEL_API_BASE') || MODEL_API_BASE_DEFAULT;
+  const modelId = properties.getProperty('MODEL_ID') || MODEL_ID_DEFAULT;
+  return {
+    ok: true,
+    version: '2026-06-30-v4',
+    modelConfigured: Boolean(apiKey),
+    apiBase: apiBase,
+    modelId: modelId,
+    missing: apiKey ? [] : ['MODEL_API_KEY'],
+    note: apiKey
+      ? 'Ключ найден. Если запросы не проходят, проверьте, что MODEL_API_BASE и MODEL_ID соответствуют провайдеру ключа.'
+      : 'Ключ не найден в Script Properties. Ключ нельзя хранить в файлах сайта или на GitHub Pages.'
+  };
+}
+
+function checkModelRateLimit_(name) {
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, normalizeName_(name));
+  const userKey = Utilities.base64EncodeWebSafe(digest).slice(0, 24);
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'model-rate-' + userKey;
+  const current = Number(cache.get(cacheKey) || 0);
+  if (current >= MODEL_RATE_LIMIT_PER_MINUTE) {
+    return { ok: false, error: 'Слишком много запросов. Подождите около минуты.' };
+  }
+  cache.put(cacheKey, String(current + 1), 60);
+  return { ok: true };
+}
+
+function appendModelUsage_(user, modelId, promptLength, status, startedAt) {
+  const sheet = getSheet_(MODEL_USAGE_SHEET);
+  ensureHeader_(sheet, ['Дата', 'ФИО', 'Подразделение', 'Модель', 'Символов в запросе', 'Статус']);
+  sheet.appendRow([
+    startedAt || new Date(),
+    user.name || '',
+    user.department || '',
+    modelId || '',
+    Number(promptLength || 0),
+    status || ''
+  ]);
 }
 
 function doPost(e) {
