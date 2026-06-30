@@ -40,7 +40,7 @@
   color: var(--muted);
   font-weight: 600;
   font-size: 0.82rem;
-  box-shadow: 0 2px 8px rgba(48, 62, 120, 0.06);
+  box-shadow: 0 2px 8px rgba(16, 27, 45, 0.06);
 }
 .feat-chip-btn:hover { border-color: var(--accent); color: var(--ink); }
 .feat-chip-btn .ico { font-size: 0.95rem; }
@@ -693,7 +693,7 @@ body.nav-open .feat-scrim { opacity: 1; visibility: visible; }
 .feat-btn:hover { transform: translateY(-1px); }
 .feat-btn.sec {
   background: var(--glass-3); color: var(--ink);
-  border: 1px solid var(--line-strong); box-shadow: 0 2px 8px rgba(48, 62, 120, 0.06);
+  border: 1px solid var(--line-strong); box-shadow: 0 2px 8px rgba(16, 27, 45, 0.06);
 }
 .feat-btn.sec:hover { border-color: var(--accent); background: var(--accent-tint); transform: none; }
 .feat-btn.ghost { background: transparent; color: var(--soft); border: 1px dashed var(--line-strong); box-shadow: none; }

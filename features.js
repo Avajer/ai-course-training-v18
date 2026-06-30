@@ -9,7 +9,7 @@
 (function () {
   "use strict";
 
-  var COURSE_VERSION = "v40";
+  var COURSE_VERSION = "v41";
   var LS = {
     mylib: "aiCourseMyPrompts",
     tour: "aiCourseTourSeenV1",
@@ -796,7 +796,7 @@
 
   function fireConfetti() {
     if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    var colors = ["#5663e0", "#0d8fd6", "#14b8a0", "#d98a2b", "#d8569c", "#8b5cf6"];
+    var colors = ["#0d8b93", "#1668c9", "#0d8b93", "#b1832f", "#d8569c", "#8b5cf6"];
     var wrap = document.createElement("div"); wrap.className = "feat-confetti";
     for (var i = 0; i < 90; i++) {
       var p = document.createElement("i");

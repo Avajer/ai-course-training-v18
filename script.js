@@ -71,7 +71,7 @@ function applyTheme(theme) {
   const toggle = document.getElementById("themeToggle");
   if (toggle) toggle.textContent = theme === "dark" ? "☀️ Светлая тема" : "🌙 Тёмная тема";
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0e1a" : "#f5f6fb");
+  if (meta) meta.setAttribute("content", theme === "dark" ? "#080c14" : "#eef1f6");
 }
 
 function initTheme() {
@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v40";
+const COURSE_BUILD = "v41";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
