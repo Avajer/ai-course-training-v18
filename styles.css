@@ -1154,6 +1154,149 @@ li::marker { color: var(--accent); }
   color: var(--muted);
   margin: 0.2rem 0;
 }
+
+.checklist-section {
+  background:
+    linear-gradient(135deg, rgba(53, 184, 139, 0.12), transparent 42%),
+    var(--surface-grad);
+}
+
+.checklist-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.checklist-card {
+  min-height: 190px;
+  padding: 1.05rem;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+}
+
+.checklist-card span {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.checklist-card h4 { margin: 0; }
+.checklist-card p { margin: 0; color: var(--muted); }
+
+.task-classifier {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(64, 128, 255, 0.14), transparent 30%),
+    radial-gradient(circle at 90% 4%, rgba(238, 178, 75, 0.13), transparent 28%),
+    var(--surface-grad);
+}
+
+.classifier-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.classifier-grid label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.classifier-grid select {
+  width: 100%;
+  min-height: 3rem;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--glass-2);
+  color: var(--ink);
+  padding: 0.75rem 0.85rem;
+  font: inherit;
+}
+
+.classifier-result {
+  padding: 1rem 1.1rem;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.classifier-result strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 1.02rem;
+}
+
+.classifier-result p { margin: 0 0 0.55rem; color: var(--muted); }
+.classifier-result ul { margin: 0; }
+.classifier-result li { color: var(--muted); }
+.classifier-result.is-safe { border-color: rgba(53, 184, 139, 0.45); }
+.classifier-result.is-caution { border-color: rgba(64, 128, 255, 0.45); }
+.classifier-result.is-warning { border-color: rgba(238, 178, 75, 0.55); }
+.classifier-result.is-danger { border-color: rgba(221, 84, 84, 0.55); }
+
+.mistake-insights {
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+}
+
+.mistake-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.mistake-card {
+  padding: 0.95rem;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.mistake-card span {
+  display: inline-flex;
+  margin-bottom: 0.55rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mistake-card.is-active {
+  border-color: rgba(238, 178, 75, 0.55);
+  background: linear-gradient(145deg, rgba(238, 178, 75, 0.12), rgba(255, 255, 255, 0.54));
+}
+
+.mistake-card.is-active span {
+  color: #8a5a00;
+  background: rgba(238, 178, 75, 0.18);
+}
+
+.mistake-card.is-ok {
+  border-color: rgba(53, 184, 139, 0.34);
+}
+
+.mistake-card.is-ok span {
+  color: var(--good);
+  background: rgba(53, 184, 139, 0.13);
+}
+
+.mistake-card h4 { margin: 0 0 0.35rem; }
+.mistake-card p { margin: 0; color: var(--muted); }
 .info-box p { color: var(--muted); }
 
 /* ---------- Ключевые факты ---------- */
@@ -2412,6 +2555,7 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
   .radar-layout, .donut-layout { grid-template-columns: 1fr; }
   .radar-chart, .donut-chart { max-width: 280px; margin: 0 auto; }
   .lesson-video-layout { grid-template-columns: 1fr; }
+  .classifier-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
