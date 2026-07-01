@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v51";
+const COURSE_BUILD = "v52";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3571,7 +3571,7 @@ function renderParticipantForm() {
       <h2 class="h2">${isAuthenticated ? "Вы вошли в курс" : "Вход и регистрация"}</h2>
       <p>${isAuthenticated
         ? `Участник: ${escapeHtml(state.participant.name)}. Результаты будут привязаны к этой учетной записи.`
-        : "Сначала зарегистрируйтесь по ФИО, подразделению и паролю. Если вы уже зарегистрированы, переключитесь на вход."}</p>
+        : "Сначала зарегистрируйтесь по ФИО, подразделению, коду доступа и паролю. Если вы уже зарегистрированы, переключитесь на вход."}</p>
     </div>
     <div class="participant-fields auth-fields">
       ${isAuthenticated ? `
@@ -3602,6 +3602,10 @@ function renderParticipantForm() {
           <span>Укажите подразделение</span>
           <input id="participantDepartmentOther" type="text" value="${escapeHtml(state.participant?.department && !departmentIdFor(state.participant.department) ? state.participant.department : "")}" placeholder="Название подразделения">
         </label>
+        <label class="register-only is-hidden">
+          <span>Код доступа</span>
+          <input id="participantAccessCode" type="text" autocomplete="one-time-code" placeholder="Код, выданный организатором">
+        </label>
         <label>
           <span>Пароль</span>
           <input id="participantPassword" type="password" autocomplete="current-password" placeholder="Введите пароль">
@@ -3610,7 +3614,7 @@ function renderParticipantForm() {
           <button id="loginButton" class="primary-button" type="button">Войти</button>
           <button id="registerButton" class="secondary-button is-hidden" type="button">Зарегистрироваться</button>
         </div>
-        <p class="submit-hint">Если владелец курса отключит пользователя в листе «Пользователи», новые результаты от него не будут приниматься.</p>
+        <p class="submit-hint">Регистрация закрыта: код доступа выдаёт организатор курса. После регистрации участник входит по ФИО и своему паролю.</p>
       `}
     </div>
   `;
@@ -3779,9 +3783,10 @@ async function authenticateParticipant(mode) {
   const name = document.getElementById("participantName")?.value.trim();
   const department = readDepartmentFromForm() || state.participant.department || "";
   const password = document.getElementById("participantPassword")?.value || "";
+  const accessCode = (document.getElementById("participantAccessCode")?.value || "").trim();
 
-  if (!name || !password || (mode === "register" && !department)) {
-    showToast(mode === "register" ? "Заполните ФИО, подразделение и пароль." : "Заполните ФИО и пароль.");
+  if (!name || !password || (mode === "register" && (!department || !accessCode))) {
+    showToast(mode === "register" ? "Заполните ФИО, подразделение, код доступа и пароль." : "Заполните ФИО и пароль.");
     return;
   }
 
@@ -3798,7 +3803,7 @@ async function authenticateParticipant(mode) {
   renderAccountStatus();
 
   try {
-    const authResponse = await requestAuth(mode, { name, department, passwordHash });
+    const authResponse = await requestAuth(mode, { name, department, passwordHash, accessCode });
     if (!authResponse.ok) {
       // Владелец сбросил пароль → переключаемся на форму нового пароля.
       if (authResponse.reset && mode === "login") {
@@ -3990,7 +3995,8 @@ function requestAuth(action, data) {
   return requestJsonpResponse(action, {
     name: data.name,
     department: data.department || "",
-    passwordHash: data.passwordHash
+    passwordHash: data.passwordHash,
+    accessCode: data.accessCode || ""
   }, { timeout: 20000 });
 }
 

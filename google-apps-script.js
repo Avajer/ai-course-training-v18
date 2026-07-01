@@ -4,6 +4,7 @@ const MODULE_RESULTS_SHEET = 'Мини-тесты';
 const OPEN_ANSWERS_SHEET = 'Открытые вопросы';
 const PRACTICE_ANSWERS_SHEET = 'Практические задания';
 const USERS_SHEET = 'Пользователи';
+const ACCESS_CODES_SHEET = 'Коды доступа';
 
 // Необязательно: задайте секрет, чтобы статистику в admin.html видел только владелец.
 // Пустая строка = статистика доступна без ключа. Если задать, в admin.html введите тот же ключ.
@@ -19,7 +20,8 @@ function doGet(e) {
       response = registerUser_({
         name: e.parameter.name || '',
         department: e.parameter.department || '',
-        passwordHash: e.parameter.passwordHash || ''
+        passwordHash: e.parameter.passwordHash || '',
+        accessCode: e.parameter.accessCode || ''
       });
     } else if (action === 'login') {
       response = loginUser_({
@@ -34,9 +36,11 @@ function doGet(e) {
     } else if (action === 'health') {
       response = {
         ok: true,
-        version: '2026-06-30-v4',
+        version: '2026-07-01-v5-closed-registration',
         capabilities: {
           register: true,
+          closedRegistration: true,
+          accessCodes: true,
           login: true,
           resetPassword: true,
           stats: true,
@@ -103,12 +107,17 @@ function doPost(e) {
 }
 
 function registerUser_(user) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
   const name = normalizeName_(user.name);
   const department = String(user.department || '').trim();
   const passwordHash = String(user.passwordHash || '').trim();
+  const accessCode = normalizeAccessCode_(user.accessCode || '');
 
-  if (!name || !department || !passwordHash) {
-    return { ok: false, error: 'Заполните ФИО, подразделение и пароль.' };
+  if (!name || !department || !passwordHash || !accessCode) {
+    return { ok: false, error: 'Заполните ФИО, подразделение, код доступа и пароль.' };
   }
 
   const sheet = getSheet_(USERS_SHEET);
@@ -119,7 +128,8 @@ function registerUser_(user) {
     'Хэш пароля',
     'Статус',
     'Последний вход',
-    'Комментарий'
+    'Комментарий',
+    'Код доступа'
   ]);
 
   const existing = findUserRow_(sheet, name);
@@ -131,8 +141,64 @@ function registerUser_(user) {
     return { ok: false, error: 'Пользователь с таким ФИО уже зарегистрирован. Используйте вход.' };
   }
 
-  sheet.appendRow([new Date(), name, department, passwordHash, 'active', new Date(), '']);
+  const codeCheck = consumeAccessCode_(accessCode, name, department);
+  if (!codeCheck.ok) return codeCheck;
+
+  sheet.appendRow([new Date(), name, department, passwordHash, 'active', new Date(), '', accessCode]);
   return { ok: true, name: name, department: department, status: 'active' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function consumeAccessCode_(accessCode, name, department) {
+  const sheet = getSheet_(ACCESS_CODES_SHEET);
+  ensureHeader_(sheet, [
+    'Дата создания',
+    'Код доступа',
+    'Статус',
+    'ФИО',
+    'Подразделение',
+    'Дата использования',
+    'Комментарий'
+  ]);
+
+  const row = findAccessCodeRow_(sheet, accessCode);
+  if (row.rowIndex < 1) {
+    return { ok: false, error: 'Код доступа не найден. Проверьте код или запросите новый у организатора курса.' };
+  }
+
+  const status = String(row.values[2] || 'active').toLowerCase();
+  if (status === 'used') {
+    return { ok: false, error: 'Код доступа уже использован. Для входа используйте ФИО и пароль.' };
+  }
+  if (status === 'blocked' || status === 'deleted' || status === 'disabled') {
+    return { ok: false, error: 'Код доступа отключён организатором курса.' };
+  }
+
+  const assignedName = normalizeName_(row.values[3] || '');
+  if (assignedName && assignedName !== name) {
+    return { ok: false, error: 'Код доступа закреплён за другим участником.' };
+  }
+
+  sheet.getRange(row.rowIndex, 3).setValue('used');
+  sheet.getRange(row.rowIndex, 4).setValue(name);
+  sheet.getRange(row.rowIndex, 5).setValue(department);
+  sheet.getRange(row.rowIndex, 6).setValue(new Date());
+  return { ok: true };
+}
+
+function findAccessCodeRow_(sheet, accessCode) {
+  const normalizedCode = normalizeAccessCode_(accessCode);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { rowIndex: -1, values: [] };
+  const values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  for (let index = 0; index < values.length; index += 1) {
+    if (normalizeAccessCode_(values[index][1]) === normalizedCode) {
+      return { rowIndex: index + 2, values: values[index] };
+    }
+  }
+  return { rowIndex: -1, values: [] };
 }
 
 function loginUser_(user) {
@@ -244,6 +310,45 @@ function findUserRow_(sheet, normalizedName) {
 
 function normalizeName_(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeAccessCode_(value) {
+  return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
+}
+
+// Запустите эту функцию вручную в Apps Script, чтобы создать новые коды доступа.
+// По умолчанию создаёт 30 кодов. При необходимости измените число в первой строке.
+function generateAccessCodes() {
+  const count = 30;
+  const sheet = getSheet_(ACCESS_CODES_SHEET);
+  ensureHeader_(sheet, [
+    'Дата создания',
+    'Код доступа',
+    'Статус',
+    'ФИО',
+    'Подразделение',
+    'Дата использования',
+    'Комментарий'
+  ]);
+
+  const existing = {};
+  if (sheet.getLastRow() > 1) {
+    const values = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues();
+    values.forEach((row) => {
+      const code = normalizeAccessCode_(row[0] || '');
+      if (code) existing[code] = true;
+    });
+  }
+
+  const rows = [];
+  while (rows.length < count) {
+    const code = 'AI-' + Utilities.getUuid().slice(0, 8).toUpperCase();
+    if (existing[code]) continue;
+    existing[code] = true;
+    rows.push([new Date(), code, 'active', '', '', '', '']);
+  }
+
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
 }
 
 function appendTestResult_(payload, participant, submittedAt) {
@@ -412,8 +517,15 @@ function getSheet_(name) {
 }
 
 function ensureHeader_(sheet, header) {
-  if (sheet.getLastRow() > 0) return;
-  sheet.appendRow(header);
+  if (sheet.getLastRow() < 1) {
+    sheet.appendRow(header);
+    return;
+  }
+  const currentColumns = Math.max(sheet.getLastColumn(), 1);
+  const current = sheet.getRange(1, 1, 1, currentColumns).getValues()[0];
+  if (current.length >= header.length) return;
+  const missing = header.slice(current.length);
+  sheet.getRange(1, current.length + 1, 1, missing.length).setValues([missing]);
 }
 
 function submitModuleResultGet_(params) {
