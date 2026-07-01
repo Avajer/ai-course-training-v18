@@ -1078,6 +1078,82 @@ li::marker { color: var(--accent); }
 
 .info-box ul { margin: 0; }
 .info-box li { color: var(--muted); }
+
+.lesson-video-section {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(83, 112, 255, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(53, 184, 139, 0.14), transparent 30%),
+    var(--surface-grad);
+}
+
+.lesson-video-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 1.1rem;
+  align-items: stretch;
+}
+
+.lesson-video-frame {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border-radius: 20px;
+  border: 1px solid var(--line-strong);
+  background: #070a12;
+  box-shadow: 0 22px 56px rgba(20, 26, 48, 0.22);
+}
+
+.lesson-video-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  z-index: 1;
+}
+
+.lesson-video-frame video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #070a12;
+}
+
+.lesson-video-note {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 1.2rem;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.lesson-video-note strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lesson-video-note p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.lesson-video-note ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.lesson-video-note li {
+  color: var(--muted);
+  margin: 0.2rem 0;
+}
 .info-box p { color: var(--muted); }
 
 /* ---------- Ключевые факты ---------- */
@@ -2335,6 +2411,7 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
   .results-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .radar-layout, .donut-layout { grid-template-columns: 1fr; }
   .radar-chart, .donut-chart { max-width: 280px; margin: 0 auto; }
+  .lesson-video-layout { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -2345,6 +2422,8 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
   .hero-stats { grid-template-columns: repeat(2, 1fr); }
 
   .section-band { padding: 1.2rem 1.05rem; border-radius: 18px; }
+  .lesson-video-frame { border-radius: 16px; }
+  .lesson-video-note { padding: 1rem; border-radius: 16px; }
 
   .top-actions { flex-direction: column; align-items: stretch; }
   .account-status { margin-right: 0; }

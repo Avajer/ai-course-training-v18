@@ -1,15 +1,16 @@
 /* ИИ-практикум — service worker (офлайн-кэш для GitHub Pages) */
-const CACHE = "ai-course-v43";
+const CACHE = "ai-course-v44";
 
 /* Базовые файлы курса. Пути относительные — работают и на github.io/<repo>/.
-   URL с ?v=43 совпадают с тем, что запрашивает index.html (кэш по точному URL). */
+   URL с ?v=44 совпадают с тем, что запрашивает index.html (кэш по точному URL).
+   Видео намеренно не предзагружаются: они тяжелые и должны открываться по требованию. */
 const CORE = [
   "./",
   "./index.html",
-  "./styles.css?v=43",
-  "./features.css?v=43",
-  "./script.js?v=43",
-  "./features.js?v=43",
+  "./styles.css?v=44",
+  "./features.css?v=44",
+  "./script.js?v=44",
+  "./features.js?v=44",
   "./manifest.webmanifest",
   "./admin.html",
   "./assets/icon.svg",
@@ -48,6 +49,12 @@ self.addEventListener("fetch", (event) => {
 
   // Никогда не кэшируем Apps Script (динамика: вход, отправка, статистика)
   if (url.hostname.endsWith("script.google.com") || url.hostname.endsWith("googleusercontent.com")) {
+    return;
+  }
+
+  // Видео большие: не кладем их в Cache Storage, чтобы не забивать память браузера.
+  if (sameOrigin && url.pathname.includes("/assets/videos/")) {
+    event.respondWith(fetch(request));
     return;
   }
 

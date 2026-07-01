@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v43";
+const COURSE_BUILD = "v44";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -2625,6 +2625,51 @@ const extraModules = [
 ];
 modules.splice(modules.length - 1, 0, ...extraModules);
 
+const moduleVideos = {
+  intro: {
+    title: "Руководство по ИИ: от А до Я",
+    file: "assets/videos/ai-guide-a-to-z.mp4",
+    poster: "assets/video-posters/ai-guide-a-to-z.png",
+    duration: "7:59",
+    caption: "Вводный ролик для первого блока: общая логика курса, базовые понятия и переход от интереса к ИИ к управляемой рабочей практике."
+  },
+  risks: {
+    title: "Парадокс ИИ: баланс",
+    file: "assets/videos/ai-balance-paradox.mp4",
+    poster: "assets/video-posters/ai-balance-paradox.png",
+    duration: "9:29",
+    caption: "Видео к блоку о рисках: как использовать ИИ как усилитель работы, не передавая ему ответственность за критичные решения."
+  },
+  qwen: {
+    title: "Разбор экосистемы Qwen",
+    file: "assets/videos/qwen-ecosystem.mp4",
+    poster: "assets/video-posters/qwen-ecosystem.png",
+    duration: "7:35",
+    caption: "Материал к блоку Qwen AI: возможности экосистемы, сценарии применения и место Qwen среди рабочих ИИ-инструментов."
+  },
+  "simple-complex": {
+    title: "Продвинутые промпты",
+    file: "assets/videos/advanced-prompts.mp4",
+    poster: "assets/video-posters/advanced-prompts.png",
+    duration: "6:55",
+    caption: "Видео для перехода от простых запросов к сложным инструкциям: контекст, критерии, ограничения и проверяемый результат."
+  },
+  tables: {
+    title: "Иллюзия больших данных",
+    file: "assets/videos/big-data-illusion.mp4",
+    poster: "assets/video-posters/big-data-illusion.png",
+    duration: "8:35",
+    caption: "Ролик к блоку о таблицах и данных: почему большой объем информации не равен качественному выводу и как проверять числовые результаты."
+  },
+  "final-practice": {
+    title: "ИИ в аудите: новые реалии",
+    file: "assets/videos/ai-audit-new-reality.mp4",
+    poster: "assets/video-posters/ai-audit-new-reality.png",
+    duration: "6:48",
+    caption: "Прикладное видео для итогового блока: как идеи курса переводятся в задачи аудита, контроля, проверки материалов и подготовки выводов."
+  }
+};
+
 /* Привязка новых блоков к целям курса (для прогресса в сайдбаре) */
 (function attachExtraObjectives() {
   const map = { tools: ["multimodal"], verification: ["tables", "longdocs"], prompt: ["comms"], security: ["boundary"] };
@@ -3707,6 +3752,7 @@ function renderModule(index, options = {}) {
       </section>
 
       ${renderWorkGuidance(module)}
+      ${renderModuleVideo(module)}
 
       <section class="section-band theory-section">
         <div class="section-title-row">
@@ -3830,6 +3876,38 @@ function renderWorkGuidance(module) {
             <p>${item}</p>
           </article>
         `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderModuleVideo(module) {
+  const video = moduleVideos[module.id];
+  if (!video) return "";
+  return `
+    <section class="section-band lesson-video-section">
+      <div class="section-title-row">
+        <div>
+          <p class="eyebrow">Видео к блоку</p>
+          <h3>${video.title}</h3>
+        </div>
+        <span class="tag">${video.duration}</span>
+      </div>
+      <div class="lesson-video-layout">
+        <div class="lesson-video-frame">
+          <video controls preload="metadata" poster="${video.poster}">
+            <source src="${video.file}" type="video/mp4">
+            Ваш браузер не поддерживает встроенное видео. Откройте файл: ${video.file}
+          </video>
+        </div>
+        <div class="lesson-video-note">
+          <strong>Как смотреть</strong>
+          <p>${video.caption}</p>
+          <ul>
+            <li>До просмотра зафиксируйте, какой вопрос по теме блока хотите закрыть.</li>
+            <li>После просмотра запишите один практический вывод в открытых вопросах блока.</li>
+          </ul>
+        </div>
       </div>
     </section>
   `;
