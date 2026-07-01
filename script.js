@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v53";
+const COURSE_BUILD = "v54";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3730,6 +3730,7 @@ function renderResultsOverview() {
     : 0;
   const totalOpenAnswered = moduleRows.reduce((sum, row) => sum + row.openAnswered, 0);
   const totalOpenQuestions = moduleRows.reduce((sum, row) => sum + row.openTotal, 0);
+  const totalPracticeAnswered = modules.reduce((sum, module) => sum + ((state.practice?.[module.id] || "").trim() ? 1 : 0), 0);
   const finalScore = state.finalSubmitted ? buildResultsPayload().score : null;
   const syncIssue = [
     ...Object.values(state.moduleSync || {}),
@@ -3759,6 +3760,11 @@ function renderResultsOverview() {
           <strong>${totalOpenAnswered}/${totalOpenQuestions}</strong>
           <span>открытых ответов заполнено</span>
           <small>Рефлексия по рабочим ситуациям</small>
+        </article>
+        <article class="results-card">
+          <strong>${totalPracticeAnswered}/${modules.length}</strong>
+          <span>практических ответов заполнено</span>
+          <small>Ответы уйдут в отдельный лист</small>
         </article>
         <article class="results-card">
           <strong>${finalScore ? `${finalScore.percent}%` : "не начат"}</strong>
@@ -4179,28 +4185,36 @@ async function submitDepartmentCases(block) {
   if (!answered) { showToast("Заполните хотя бы один кейс перед отправкой."); return; }
   const status = document.getElementById("deptCasesStatus");
   if (status) status.textContent = "Отправляем ответы…";
-  await syncDepartmentOpenAnswers(block);
-  if (status) status.textContent = "Ответы по кейсам отправлены в таблицу.";
-  showToast("Ответы по кейсам отправлены.");
+  try {
+    const saved = await syncDepartmentOpenAnswers(block);
+    if (status) status.textContent = `Ответы по кейсам отправлены в таблицу: ${saved}.`;
+    showToast("Ответы по кейсам отправлены.");
+  } catch (error) {
+    const text = explainEndpointError(error);
+    if (status) status.textContent = text;
+    showToast("Не удалось отправить ответы по кейсам. Проверьте Apps Script.");
+  }
 }
 
 async function syncDepartmentOpenAnswers(block) {
-  if (!RESULTS_ENDPOINT || !validateParticipant({ quiet: true })) return;
+  if (!RESULTS_ENDPOINT || !validateParticipant({ quiet: true })) return 0;
+  await ensureResultsEndpointReady();
+  const rows = [];
   for (let i = 0; i < block.cases.length; i += 1) {
     const answer = (state.openAnswers?.[`${block.id}:${i}`] || "").trim();
     if (!answer) continue;
-    try {
-      await requestServerAction("submitOpenAnswer", {
-        ...getParticipantRequestData(),
-        submittedAt: new Date().toISOString(),
-        build: COURSE_BUILD,
-        moduleId: block.id,
-        moduleTitle: block.title,
-        question: block.cases[i],
-        answer
-      }, { timeout: 20000 });
-    } catch (error) { /* статус не критичен для UX */ }
+    rows.push({
+      moduleId: block.id,
+      moduleTitle: block.title,
+      question: block.cases[i],
+      answer
+    });
   }
+  return sendRowsInChunks("submitOpenAnswers", rows, "rows", {
+    ...getParticipantRequestData(),
+    submittedAt: new Date().toISOString(),
+    build: COURSE_BUILD
+  }, 3);
 }
 
 function renderModule(index, options = {}) {
@@ -4285,6 +4299,14 @@ function renderModule(index, options = {}) {
         </div>
       </section>
 
+      <section class="section-band practice-box">
+        <p class="eyebrow">Практическое задание</p>
+        <h3>Примените блок на рабочей задаче</h3>
+        <p>${module.practice || "Опишите, как вы примените материал блока в своей работе."}</p>
+        <textarea data-practice="${module.id}" placeholder="Запишите краткий ответ. Он сохранится в браузере и уйдет в отдельный лист таблицы.">${escapeHtml(state.practice?.[module.id] || "")}</textarea>
+        <p class="field-status">Практический ответ сохраняется отдельно от открытых вопросов и мини-теста.</p>
+      </section>
+
       <section class="section-band open-question-box">
         <p class="eyebrow">Открытые вопросы</p>
         <h3>Зафиксируйте выводы по своей рабочей ситуации</h3>
@@ -4314,6 +4336,14 @@ function renderModule(index, options = {}) {
       state.openAnswers[field.dataset.open] = field.value;
       saveState();
       updateModuleResponseStatus(module);
+      renderResultsOverview();
+    });
+  });
+
+  contentView.querySelectorAll("[data-practice]").forEach((field) => {
+    field.addEventListener("input", () => {
+      state.practice[field.dataset.practice] = field.value;
+      saveState();
       renderResultsOverview();
     });
   });
@@ -5434,6 +5464,43 @@ function renderMistakeInsights(finalSet) {
   `;
 }
 
+function getOpenAnswerRows() {
+  const courseRows = modules.flatMap((module) => (module.openQuestions || [])
+    .map((question, index) => {
+      const key = `${module.id}:${index}`;
+      return {
+        moduleId: module.id,
+        moduleTitle: module.title,
+        question,
+        answer: state.openAnswers?.[key] || ""
+      };
+    }));
+
+  const departmentBlock = getDepartmentBlock();
+  const departmentRows = departmentBlock ? (departmentBlock.cases || []).map((question, index) => {
+    const key = `${departmentBlock.id}:${index}`;
+    return {
+      moduleId: departmentBlock.id,
+      moduleTitle: departmentBlock.title,
+      question,
+      answer: state.openAnswers?.[key] || ""
+    };
+  }) : [];
+
+  return [...courseRows, ...departmentRows].filter((row) => String(row.answer || "").trim());
+}
+
+function getPracticeAnswerRows() {
+  return modules
+    .map((module) => ({
+      moduleId: module.id,
+      moduleTitle: module.title,
+      task: module.practice || "",
+      answer: state.practice?.[module.id] || ""
+    }))
+    .filter((row) => row.task && String(row.answer || "").trim());
+}
+
 function buildResultsPayload() {
   const finalSet = getFinalSet();
   const correct = finalSet.reduce((sum, question, index) => {
@@ -5449,17 +5516,8 @@ function buildResultsPayload() {
   const completedModules = modules
     .filter((module) => state.modules[module.id]?.submitted)
     .map((module) => ({ id: module.id, title: module.title }));
-  const openAnswerRows = modules.flatMap((module) => (module.openQuestions || [])
-    .map((question, index) => {
-      const key = `${module.id}:${index}`;
-      return {
-        moduleId: module.id,
-        moduleTitle: module.title,
-        question,
-        answer: state.openAnswers?.[key] || ""
-      };
-    })
-    .filter((row) => row.answer.trim()));
+  const openAnswerRows = getOpenAnswerRows();
+  const practiceAnswerRows = getPracticeAnswerRows();
 
   return {
     action: "submitResult",
@@ -5477,7 +5535,9 @@ function buildResultsPayload() {
       category: question.category
     })),
     openAnswers: state.openAnswers,
-    openAnswerRows
+    openAnswerRows,
+    practiceAnswers: state.practice,
+    practiceAnswerRows
   };
 }
 
@@ -5506,7 +5566,7 @@ function validateParticipant(options = {}) {
 
 function explainEndpointError(error) {
   const message = String(error?.message || error || "");
-  if (/Неизвестное действие/i.test(message)) return "ошибка: Apps Script опубликован в старой версии";
+  if (/Неизвестное действие|старой версии/i.test(message)) return "ошибка: Apps Script опубликован в старой версии";
   if (/отключ|заблок|удал|blocked|deleted|disabled/i.test(message)) return "доступ отключён владельцем";
   if (/timeout|request failed|auth request failed/i.test(message)) return "ошибка связи с Google Apps Script";
   if (/не найден|зарегистрируйтесь/i.test(message)) return "пользователь не найден в таблице";
@@ -5543,7 +5603,33 @@ function chunkArray(items, size) {
   return chunks;
 }
 
+async function ensureResultsEndpointReady() {
+  const health = await requestServerAction("health", {}, { timeout: 20000 });
+  const capabilities = health?.capabilities || {};
+  if (!capabilities.submitOpenAnswers || !capabilities.submitPracticeAnswers) {
+    throw new Error("Apps Script опубликован в старой версии: нет пакетной отправки открытых и практических ответов");
+  }
+  return health;
+}
+
+async function sendRowsInChunks(action, rows, fieldName, baseData, chunkSize = 3) {
+  if (!rows.length) return 0;
+  let saved = 0;
+  for (const chunk of chunkArray(rows, chunkSize)) {
+    const response = await requestServerAction(action, {
+      ...baseData,
+      [fieldName]: JSON.stringify(chunk)
+    }, { timeout: 25000 });
+    saved += Number(response?.saved ?? chunk.length);
+  }
+  if (saved !== rows.length) {
+    throw new Error(`${action}: сохранено ${saved} из ${rows.length}`);
+  }
+  return saved;
+}
+
 async function sendFinalResultsViaGet(payload) {
+  await ensureResultsEndpointReady();
   await requestServerAction("submitFinalSummary", buildFinalSummaryRequest(payload), { timeout: 20000 });
 
   // Развёрнутые ответы итогового теста — пачками по 5, чтобы не упереться в длину URL.
@@ -5564,17 +5650,14 @@ async function sendFinalResultsViaGet(payload) {
     }, { timeout: 20000 });
   }
 
-  for (const row of payload.openAnswerRows) {
-    await requestServerAction("submitOpenAnswer", {
-      ...getParticipantRequestData(),
-      submittedAt: payload.submittedAt,
-      build: payload.build || COURSE_BUILD,
-      moduleId: row.moduleId,
-      moduleTitle: row.moduleTitle,
-      question: row.question,
-      answer: row.answer
-    }, { timeout: 20000 });
-  }
+  const baseData = {
+    ...getParticipantRequestData(),
+    submittedAt: payload.submittedAt,
+    build: payload.build || COURSE_BUILD
+  };
+
+  await sendRowsInChunks("submitOpenAnswers", payload.openAnswerRows || [], "rows", baseData, 3);
+  await sendRowsInChunks("submitPracticeAnswers", payload.practiceAnswerRows || [], "rows", baseData, 3);
 }
 
 async function sendResultsViaLegacyPost(payload) {
@@ -5627,22 +5710,12 @@ async function submitResults() {
     showToast("Результат отправлен в таблицу.");
   } catch (error) {
     if (/Неизвестное действие/i.test(String(error?.message || error))) {
-      try {
-        await sendResultsViaLegacyPost(payload);
-        state.resultStatus = "отправлено через резервный канал";
-        saveState();
-        renderResultsOverview();
-        renderFinalTest({ scrollMode: "keep" });
-        showToast("Итог, практика и открытые ответы отправлены через резервный канал. Для мини-тестов нужен обновленный Apps Script.");
-        return;
-      } catch (legacyError) {
-        state.resultStatus = explainEndpointError(legacyError);
-        saveState();
-        renderResultsOverview();
-        renderFinalTest({ scrollMode: "keep" });
-        showToast("Не удалось отправить даже через резервный канал. Проверьте публикацию Google Apps Script.");
-        return;
-      }
+      state.resultStatus = explainEndpointError(error);
+      saveState();
+      renderResultsOverview();
+      renderFinalTest({ scrollMode: "keep" });
+      showToast("Apps Script опубликован в старой версии. Обновите веб-приложение Google.");
+      return;
     }
 
     state.resultStatus = explainEndpointError(error);

@@ -38,7 +38,7 @@ function doGet(e) {
     } else if (action === 'health') {
       response = {
         ok: true,
-        version: '2026-07-01-v6-security-hardening',
+        version: '2026-07-01-v7-bulk-open-practice-results',
         capabilities: {
           register: true,
           closedRegistration: true,
@@ -52,7 +52,9 @@ function doGet(e) {
           submitFinalSummary: true,
           submitFinalAnswers: true,
           submitOpenAnswer: true,
-          submitPracticeAnswer: true
+          submitOpenAnswers: true,
+          submitPracticeAnswer: true,
+          submitPracticeAnswers: true
         }
       };
     } else if (action === 'submitModuleResult') {
@@ -63,8 +65,12 @@ function doGet(e) {
       response = submitFinalAnswersGet_(e.parameter);
     } else if (action === 'submitOpenAnswer') {
       response = submitOpenAnswerGet_(e.parameter);
+    } else if (action === 'submitOpenAnswers') {
+      response = submitOpenAnswersGet_(e.parameter);
     } else if (action === 'submitPracticeAnswer') {
       response = submitPracticeAnswerGet_(e.parameter);
+    } else if (action === 'submitPracticeAnswers') {
+      response = submitPracticeAnswersGet_(e.parameter);
     } else if (action === 'stats') {
       response = computeStats_(e.parameter.ownerKey || '');
     } else {
@@ -111,6 +117,16 @@ function doPost(e) {
     return ContentService
       .createTextOutput(JSON.stringify({ ok: false, error: String(error) }))
       .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function withScriptLock_(callback) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    return callback();
   } finally {
     lock.releaseLock();
   }
@@ -558,8 +574,8 @@ function appendOpenAnswers_(payload, participant, submittedAt) {
   ]);
 
   const rows = payload.openAnswerRows || [];
-  rows.forEach((row) => {
-    sheet.appendRow([
+  if (!rows.length) return 0;
+  const values = rows.map((row) => [
       submittedAt,
       participant.name || '',
       participant.department || '',
@@ -568,7 +584,8 @@ function appendOpenAnswers_(payload, participant, submittedAt) {
       row.question || '',
       row.answer || ''
     ]);
-  });
+  sheet.getRange(sheet.getLastRow() + 1, 1, values.length, values[0].length).setValues(values);
+  return values.length;
 }
 
 function appendPracticeAnswers_(payload, participant, submittedAt) {
@@ -584,8 +601,8 @@ function appendPracticeAnswers_(payload, participant, submittedAt) {
   ]);
 
   const rows = payload.practiceAnswerRows || [];
-  rows.forEach((row) => {
-    sheet.appendRow([
+  if (!rows.length) return 0;
+  const values = rows.map((row) => [
       submittedAt,
       participant.name || '',
       participant.department || '',
@@ -594,7 +611,8 @@ function appendPracticeAnswers_(payload, participant, submittedAt) {
       row.task || '',
       row.answer || ''
     ]);
-  });
+  sheet.getRange(sheet.getLastRow() + 1, 1, values.length, values[0].length).setValues(values);
+  return values.length;
 }
 
 function getSheet_(name) {
@@ -666,51 +684,83 @@ function submitFinalSummaryGet_(params) {
 }
 
 function submitOpenAnswerGet_(params) {
-  const participant = {
+  const row = {
+    moduleId: params.moduleId || '',
+    moduleTitle: params.moduleTitle || '',
+    question: params.question || '',
+    answer: params.answer || ''
+  };
+  return submitOpenAnswersGet_({
     name: params.name || '',
     department: params.department || '',
-    passwordHash: params.passwordHash || ''
-  };
-  const userCheck = findUser_(participant.name, participant.passwordHash);
-  if (!userCheck.ok) return userCheck;
+    passwordHash: params.passwordHash || '',
+    submittedAt: params.submittedAt || '',
+    build: params.build || '',
+    rows: JSON.stringify([row])
+  });
+}
 
-  appendOpenAnswers_({
-    openAnswerRows: [{
-      moduleId: params.moduleId || '',
-      moduleTitle: params.moduleTitle || '',
-      question: params.question || '',
-      answer: params.answer || ''
-    }]
-  }, {
-    name: userCheck.name,
-    department: userCheck.department || participant.department || ''
-  }, params.submittedAt ? new Date(params.submittedAt) : new Date());
+function submitOpenAnswersGet_(params) {
+  return withScriptLock_(function () {
+    const participant = {
+      name: params.name || '',
+      department: params.department || '',
+      passwordHash: params.passwordHash || ''
+    };
+    const userCheck = findUser_(participant.name, participant.passwordHash);
+    if (!userCheck.ok) return userCheck;
 
-  return { ok: true };
+    const rows = safeJsonParse_(params.rows, []);
+    if (!Array.isArray(rows)) return { ok: false, error: 'Открытые ответы переданы в неверном формате.' };
+    const saved = appendOpenAnswers_({
+      openAnswerRows: rows
+    }, {
+      name: userCheck.name,
+      department: userCheck.department || participant.department || ''
+    }, params.submittedAt ? new Date(params.submittedAt) : new Date());
+
+    return { ok: true, saved: saved };
+  });
 }
 
 function submitPracticeAnswerGet_(params) {
-  const participant = {
+  const row = {
+    moduleId: params.moduleId || '',
+    moduleTitle: params.moduleTitle || '',
+    task: params.task || '',
+    answer: params.answer || ''
+  };
+  return submitPracticeAnswersGet_({
     name: params.name || '',
     department: params.department || '',
-    passwordHash: params.passwordHash || ''
-  };
-  const userCheck = findUser_(participant.name, participant.passwordHash);
-  if (!userCheck.ok) return userCheck;
+    passwordHash: params.passwordHash || '',
+    submittedAt: params.submittedAt || '',
+    build: params.build || '',
+    rows: JSON.stringify([row])
+  });
+}
 
-  appendPracticeAnswers_({
-    practiceAnswerRows: [{
-      moduleId: params.moduleId || '',
-      moduleTitle: params.moduleTitle || '',
-      task: params.task || '',
-      answer: params.answer || ''
-    }]
-  }, {
-    name: userCheck.name,
-    department: userCheck.department || participant.department || ''
-  }, params.submittedAt ? new Date(params.submittedAt) : new Date());
+function submitPracticeAnswersGet_(params) {
+  return withScriptLock_(function () {
+    const participant = {
+      name: params.name || '',
+      department: params.department || '',
+      passwordHash: params.passwordHash || ''
+    };
+    const userCheck = findUser_(participant.name, participant.passwordHash);
+    if (!userCheck.ok) return userCheck;
 
-  return { ok: true };
+    const rows = safeJsonParse_(params.rows, []);
+    if (!Array.isArray(rows)) return { ok: false, error: 'Практические ответы переданы в неверном формате.' };
+    const saved = appendPracticeAnswers_({
+      practiceAnswerRows: rows
+    }, {
+      name: userCheck.name,
+      department: userCheck.department || participant.department || ''
+    }, params.submittedAt ? new Date(params.submittedAt) : new Date());
+
+    return { ok: true, saved: saved };
+  });
 }
 
 function safeJsonParse_(value, fallback) {
