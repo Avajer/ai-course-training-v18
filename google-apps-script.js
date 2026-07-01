@@ -5,6 +5,8 @@ const OPEN_ANSWERS_SHEET = 'Открытые вопросы';
 const PRACTICE_ANSWERS_SHEET = 'Практические задания';
 const USERS_SHEET = 'Пользователи';
 const ACCESS_CODES_SHEET = 'Коды доступа';
+const ACCESS_LOG_SHEET = 'Журнал доступа';
+const MAX_FAILED_ATTEMPTS_PER_CODE = 5;
 
 // Необязательно: задайте секрет, чтобы статистику в admin.html видел только владелец.
 // Пустая строка = статистика доступна без ключа. Если задать, в admin.html введите тот же ключ.
@@ -36,11 +38,13 @@ function doGet(e) {
     } else if (action === 'health') {
       response = {
         ok: true,
-        version: '2026-07-01-v5-closed-registration',
+        version: '2026-07-01-v6-security-hardening',
         capabilities: {
           register: true,
           closedRegistration: true,
           accessCodes: true,
+          accessLog: true,
+          accessCodeAttemptLimit: MAX_FAILED_ATTEMPTS_PER_CODE,
           login: true,
           resetPassword: true,
           stats: true,
@@ -68,6 +72,12 @@ function doGet(e) {
     }
   } catch (error) {
     response = { ok: false, error: String(error) };
+  }
+
+  if (action === 'register' || action === 'login' || action === 'resetPassword') {
+    try {
+      logAccessAttempt_(action, e.parameter, response);
+    } catch (logError) {}
   }
 
   return ContentService
@@ -175,6 +185,11 @@ function consumeAccessCode_(accessCode, name, department) {
   if (status === 'blocked' || status === 'deleted' || status === 'disabled') {
     return { ok: false, error: 'Код доступа отключён организатором курса.' };
   }
+  if (countFailedRegisterAttempts_(accessCode) >= MAX_FAILED_ATTEMPTS_PER_CODE) {
+    sheet.getRange(row.rowIndex, 3).setValue('blocked');
+    sheet.getRange(row.rowIndex, 7).setValue('Автоматически заблокирован после неудачных попыток регистрации.');
+    return { ok: false, error: 'Код доступа временно заблокирован из-за неудачных попыток. Запросите новый код у организатора курса.' };
+  }
 
   const assignedName = normalizeName_(row.values[3] || '');
   if (assignedName && assignedName !== name) {
@@ -201,6 +216,76 @@ function findAccessCodeRow_(sheet, accessCode) {
   return { rowIndex: -1, values: [] };
 }
 
+function logAccessAttempt_(action, params, response) {
+  const sheet = getSheet_(ACCESS_LOG_SHEET);
+  ensureHeader_(sheet, [
+    'Дата',
+    'Действие',
+    'ФИО',
+    'Подразделение',
+    'Код доступа',
+    'Результат',
+    'Сообщение',
+    'Статус пользователя'
+  ]);
+
+  const normalizedCode = normalizeAccessCode_(params.accessCode || '');
+  const ok = Boolean(response && response.ok);
+  const message = ok ? 'ok' : String((response && response.error) || 'ошибка');
+  sheet.appendRow([
+    new Date(),
+    action,
+    normalizeName_(params.name || ''),
+    String(params.department || '').trim(),
+    normalizedCode,
+    ok ? 'ok' : 'error',
+    message,
+    String((response && response.status) || '')
+  ]);
+
+  if (action === 'register' && normalizedCode && !ok) {
+    blockAccessCodeAfterLimit_(normalizedCode);
+  }
+}
+
+function countFailedRegisterAttempts_(accessCode) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ACCESS_LOG_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  const normalizedCode = normalizeAccessCode_(accessCode);
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 8).getValues();
+  let count = 0;
+  rows.forEach((row) => {
+    if (
+      String(row[1] || '') === 'register' &&
+      normalizeAccessCode_(row[4] || '') === normalizedCode &&
+      String(row[5] || '').toLowerCase() !== 'ok'
+    ) {
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function blockAccessCodeAfterLimit_(accessCode) {
+  if (countFailedRegisterAttempts_(accessCode) < MAX_FAILED_ATTEMPTS_PER_CODE) return;
+  const sheet = getSheet_(ACCESS_CODES_SHEET);
+  ensureHeader_(sheet, [
+    'Дата создания',
+    'Код доступа',
+    'Статус',
+    'ФИО',
+    'Подразделение',
+    'Дата использования',
+    'Комментарий'
+  ]);
+  const row = findAccessCodeRow_(sheet, accessCode);
+  if (row.rowIndex < 1) return;
+  const status = String(row.values[2] || 'active').toLowerCase();
+  if (status === 'used' || status === 'blocked' || status === 'deleted' || status === 'disabled') return;
+  sheet.getRange(row.rowIndex, 3).setValue('blocked');
+  sheet.getRange(row.rowIndex, 7).setValue('Автоматически заблокирован после ' + MAX_FAILED_ATTEMPTS_PER_CODE + ' неудачных попыток регистрации.');
+}
+
 function loginUser_(user) {
   const name = normalizeName_(user.name);
   const passwordHash = String(user.passwordHash || '').trim();
@@ -211,7 +296,7 @@ function loginUser_(user) {
 
   const sheet = getSheet_(USERS_SHEET);
   ensureHeader_(sheet, [
-    'Дата регистрации', 'ФИО', 'Подразделение', 'Хэш пароля', 'Статус', 'Последний вход', 'Комментарий'
+    'Дата регистрации', 'ФИО', 'Подразделение', 'Хэш пароля', 'Статус', 'Последний вход', 'Комментарий', 'Код доступа'
   ]);
   const row = findUserRow_(sheet, name);
   if (row.rowIndex < 1) {
@@ -242,7 +327,7 @@ function resetPassword_(user) {
   }
   const sheet = getSheet_(USERS_SHEET);
   ensureHeader_(sheet, [
-    'Дата регистрации', 'ФИО', 'Подразделение', 'Хэш пароля', 'Статус', 'Последний вход', 'Комментарий'
+    'Дата регистрации', 'ФИО', 'Подразделение', 'Хэш пароля', 'Статус', 'Последний вход', 'Комментарий', 'Код доступа'
   ]);
   const row = findUserRow_(sheet, name);
   if (row.rowIndex < 1) {
@@ -271,7 +356,8 @@ function findUser_(name, passwordHash) {
     'Хэш пароля',
     'Статус',
     'Последний вход',
-    'Комментарий'
+    'Комментарий',
+    'Код доступа'
   ]);
 
   const normalized = normalizeName_(name);
@@ -299,7 +385,7 @@ function findUser_(name, passwordHash) {
 function findUserRow_(sheet, normalizedName) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return { rowIndex: -1, values: [] };
-  const values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  const values = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
   for (let index = 0; index < values.length; index += 1) {
     if (normalizeName_(values[index][1]) === normalizedName) {
       return { rowIndex: index + 2, values: values[index] };
@@ -648,7 +734,7 @@ function computeStats_(ownerKey) {
   // Пользователи
   let users = { total: 0, active: 0, blocked: 0 };
   if (usersSheet && usersSheet.getLastRow() > 1) {
-    const rows = usersSheet.getRange(2, 1, usersSheet.getLastRow() - 1, 7).getValues();
+    const rows = usersSheet.getRange(2, 1, usersSheet.getLastRow() - 1, 8).getValues();
     rows.forEach((r) => {
       users.total += 1;
       const status = String(r[4] || 'active').toLowerCase();

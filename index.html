@@ -15,12 +15,14 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="ИИ-практикум">
   <meta name="description" content="Практический курс по работе с нейросетями для работников: промпты, проверка результата, безопасность, тренажёр промптов и сертификат.">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="googlebot" content="noindex,nofollow,noarchive">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Geologica:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=52">
-  <link rel="stylesheet" href="features.css?v=52">
+  <link rel="stylesheet" href="styles.css?v=53">
+  <link rel="stylesheet" href="features.css?v=53">
 </head>
 <body class="tpl-course-module">
   <div class="deck app-shell">
@@ -92,13 +94,13 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="script.js?v=52"></script>
-  <script src="features.js?v=52"></script>
+  <script src="script.js?v=53"></script>
+  <script src="features.js?v=53"></script>
   <script>
     /* PWA: офлайн-режим и установка как приложение (только на https / localhost) */
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        var reloadedKey = "aiCourseSwReloadedV52";
+        var reloadedKey = "aiCourseSwReloadedV53";
         var onControllerChange = function () {
           if (sessionStorage.getItem(reloadedKey)) return;
           sessionStorage.setItem(reloadedKey, "1");

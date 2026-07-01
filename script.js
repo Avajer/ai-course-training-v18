@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v52";
+const COURSE_BUILD = "v53";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3387,11 +3387,13 @@ function renderNav() {
   const locked = !isAuthenticated();
   let html = modules.map((module, index) => {
     const done = Boolean(state.modules[module.id]?.submitted);
+    const visibleTitle = locked ? `Закрытый блок ${index + 1}` : module.title;
+    const ariaLabel = locked ? `Доступ после регистрации. Закрытый блок ${index + 1}` : module.title;
     return `
-      <button class="module-button ${locked ? "is-locked" : ""} ${currentView === "module" && currentModuleIndex === index ? "is-active" : ""}" type="button" data-module="${index}" aria-label="${locked ? "Доступ после регистрации. " : ""}${module.title}">
+      <button class="module-button ${locked ? "is-locked" : ""} ${currentView === "module" && currentModuleIndex === index ? "is-active" : ""}" type="button" data-module="${index}" aria-label="${escapeHtml(ariaLabel)}">
         <span class="module-index">${index + 1}</span>
-        <span class="module-title">${module.title}</span>
-      <span class="module-state ${done ? "is-done" : ""}">${locked ? "вход" : done ? "✓" : ""}</span>
+        <span class="module-title">${escapeHtml(visibleTitle)}</span>
+      <span class="module-state ${done ? "is-done" : ""}">${locked ? "закрыто" : done ? "✓" : ""}</span>
       </button>
     `;
   }).join("");
@@ -3423,6 +3425,23 @@ function renderNav() {
 }
 
 function renderObjectives() {
+  if (!isAuthenticated()) {
+    objectiveList.innerHTML = `
+      <li class="locked-objective">
+        <button class="objective-button" type="button" data-objective-locked="1">
+          <span>Цели курса откроются после входа</span>
+          <small>закрыто</small>
+        </button>
+      </li>
+    `;
+    objectiveList.querySelector("[data-objective-locked]")?.addEventListener("click", () => {
+      renderAuthRequired();
+      renderParticipantForm();
+      participantView.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return;
+  }
+
   objectiveList.innerHTML = learningObjectives.map((objective) => {
     const completed = objective.modules.filter((id) => state.modules[id]?.submitted).length;
     const total = objective.modules.length;
@@ -4003,6 +4022,19 @@ function requestAuth(action, data) {
 function renderRoadmap() {
   const locked = !isAuthenticated();
   const doneCount = modules.filter((m) => state.modules[m.id]?.submitted).length;
+  if (locked) {
+    roadmapView.innerHTML = `
+      <div class="section-band results-empty locked-roadmap">
+        <div>
+          <p class="eyebrow">Карта курса</p>
+          <h2>Маршрут откроется после входа</h2>
+          <p>Для доступа к учебным блокам, библиотеке промптов, глоссарию и тестам нужна регистрация по коду, выданному организатором курса.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   roadmapView.innerHTML = `
     <div class="roadmap-head roadmap-head-compact">
       <div>
