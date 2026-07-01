@@ -1,16 +1,16 @@
 /* ИИ-практикум — service worker (офлайн-кэш для GitHub Pages) */
-const CACHE = "ai-course-v49";
+const CACHE = "ai-course-v50";
 
 /* Базовые файлы курса. Пути относительные — работают и на github.io/<repo>/.
-   URL с ?v=49 совпадают с тем, что запрашивает index.html (кэш по точному URL).
+   URL с ?v=50 совпадают с тем, что запрашивает index.html (кэш по точному URL).
    Видео намеренно не предзагружаются: они тяжелые и должны открываться по требованию. */
 const CORE = [
   "./",
   "./index.html",
-  "./styles.css?v=49",
-  "./features.css?v=49",
-  "./script.js?v=49",
-  "./features.js?v=49",
+  "./styles.css?v=50",
+  "./features.css?v=50",
+  "./script.js?v=50",
+  "./features.js?v=50",
   "./manifest.webmanifest",
   "./admin.html",
   "./assets/icon.svg",

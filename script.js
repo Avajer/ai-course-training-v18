@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v49";
+const COURSE_BUILD = "v50";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3080,6 +3080,13 @@ const moduleVideos = {
     poster: "assets/video-posters/qwen-ecosystem.png",
     duration: "7:35",
     caption: "Материал к блоку Qwen AI: возможности экосистемы, сценарии применения и место Qwen среди рабочих ИИ-инструментов."
+  },
+  deepseek: {
+    title: "Полный гайд по DeepSeek V4",
+    file: "assets/videos/deepseek-v4-guide.mp4",
+    poster: "assets/video-posters/deepseek-v4-guide.jpg",
+    duration: "8:17",
+    caption: "Видео к блоку DeepSeek: обзор возможностей инструмента, режима рассуждения и практического применения в рабочих задачах."
   },
   "simple-complex": {
     title: "Продвинутые промпты",
