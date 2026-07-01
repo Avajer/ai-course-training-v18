@@ -2107,14 +2107,14 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
 
 /* Золотая рамка для приоритетных промптов (например, анализ дебиторской задолженности). */
 .prompt-card.is-gold {
-  border: 2px solid #c8a04b;
-  box-shadow: 0 0 0 1px rgba(200, 160, 75, 0.25), 0 10px 26px rgba(200, 160, 75, 0.14);
-  background: linear-gradient(180deg, rgba(200, 160, 75, 0.08), transparent 60%);
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 0 1px var(--gold-tint), 0 10px 26px var(--gold-tint);
+  background: linear-gradient(180deg, var(--gold-tint), transparent 60%);
 }
 .prompt-card.is-gold h3::after {
   content: "★";
   margin-left: 0.4rem;
-  color: #c8a04b;
+  color: var(--gold);
 }
 
 /* Предупреждение о персональных/служебных данных в промпте. */
@@ -2122,8 +2122,8 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
   margin: 0.1rem 0 0.2rem;
   padding: 0.5rem 0.7rem;
   border-radius: 10px;
-  background: rgba(177, 131, 47, 0.1);
-  border: 1px solid rgba(177, 131, 47, 0.32);
+  background: var(--gold-tint);
+  border: 1px solid var(--gold);
   color: var(--ink);
   font-size: 0.8rem;
   line-height: 1.4;
