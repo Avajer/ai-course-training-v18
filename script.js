@@ -83,7 +83,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v47";
+const COURSE_BUILD = "v48";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -186,7 +186,7 @@ function getDepartmentBlock() {
 }
 
 function hasDepartmentBlock() {
-  return Boolean(isAuthenticated() && getDepartmentBlock());
+  return false;
 }
 
 function updateDepartmentNav() {
@@ -1392,7 +1392,7 @@ const learningObjectives = [
   { id: "basics", label: "Понимать, где ИИ полезен", modules: ["intro", "final-practice"] },
   { id: "tools", label: "Выбирать нейросеть под задачу", modules: ["tools", "qwen", "deepseek"] },
   { id: "prompt", label: "Собирать сильный промпт", modules: ["prompt", "formula", "simple-complex", "iterations", "mistakes", "library"] },
-  { id: "verification", label: "Проверять результат и риски", modules: ["risks", "verification", "docs", "construction-control"] },
+  { id: "verification", label: "Проверять результат и риски", modules: ["risks", "verification", "docs"] },
   { id: "security", label: "Работать безопасно и этично", modules: ["task-guard", "security"] }
 ];
 
@@ -1408,7 +1408,6 @@ const workGuidance = {
   "simple-complex": ["Короткий запрос подходит для идей и черновиков; документ для руководителя требует подробной инструкции.", "Глубину промпта выбирайте по риску, а не по желанию написать длиннее.", "Если результат пойдет в работу, добавьте критерии качества и отдельный этап проверки."],
   iterations: ["Считайте первый ответ черновиком, даже если он выглядит уверенно.", "Уточняйте по одному параметру: структура, тон, полнота, факты, риски.", "Сохраняйте удачные уточнения, чтобы потом превратить их в шаблон."],
   docs: ["Для документа просите не просто переписать текст, а найти пробелы, риски и спорные формулировки.", "Всегда отделяйте наблюдения, выводы и рекомендации.", "Перед загрузкой документа удалите лишние данные и оставьте только безопасный фрагмент."],
-  "construction-control": ["Начинайте с безопасной структуры: объект, этап, документы, цель проверки и критерии.", "Просите ИИ отделять факт из документа от индикатора риска и подтверждённого замечания.", "Не передавайте чувствительные данные по объекту, подрядчику, людям и реквизитам без обезличивания или разрешённого контура."],
   verification: ["Проверяйте даты, цифры, ссылки, нормы, должности, названия и конкретные утверждения.", "Просите ИИ выделить допущения и спорные места, но не считайте это окончательной проверкой.", "Если источник не открывается или не подтверждает тезис, тезис нельзя использовать как факт."],
   security: ["Используйте принцип минимума данных: отправляйте только то, что необходимо для задачи.", "Заменяйте реальные объекты условными обозначениями: работник A, отдел B, документ X.", "Не выдавайте машинный черновик за подтвержденный результат без проверки."],
   mistakes: ["Если ответ слабый, сначала проверьте постановку задачи, а не только модель.", "Добавьте цель, аудиторию, формат, критерии и границы задачи.", "Не смешивайте в одном запросе анализ, письмо, таблицу и финальную проверку."],
@@ -2950,7 +2949,7 @@ const extraModules = [
     ]
   }
 ];
-modules.splice(modules.length - 1, 0, ...extraModules);
+modules.splice(modules.length - 1, 0, ...extraModules.filter((module) => module.id !== "construction-control"));
 
 const moduleVideos = {
   intro: {
@@ -3052,7 +3051,6 @@ let revealObserver = null;
 
 ["libraryButton", "topLibraryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderLibrary()));
 ["finalButton", "topFinalButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderFinalTest()));
-["departmentButton", "topDepartmentButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderDepartmentBlock()));
 ["glossaryButton", "topGlossaryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderGlossary()));
 ["resetButton", "topResetButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", resetProgress));
 
@@ -4990,7 +4988,7 @@ const MODULE_CATEGORY = {
   prompt: "prompt", formula: "prompt", "simple-complex": "prompt", iterations: "prompt",
   mistakes: "prompt", library: "prompt", verification: "verification", docs: "docs",
   security: "security", multimodal: "tools", tables: "verification", longdocs: "docs",
-  comms: "prompt", "construction-control": "docs", boundary: "security", "final-practice": "basics"
+  comms: "prompt", boundary: "security", "final-practice": "basics"
 };
 
 function shuffleArray(arr) {
