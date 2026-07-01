@@ -210,6 +210,7 @@ body.nav-open .feat-scrim { opacity: 1; visibility: visible; }
   resize: vertical;
 }
 .feat-field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint-2); }
+.feat-prompt-field { min-height: 13rem; }
 
 .feat-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
 
@@ -233,8 +234,24 @@ body.nav-open .feat-scrim { opacity: 1; visibility: visible; }
 }
 .feat-score-meter { height: 8px; border-radius: 99px; background: var(--track); overflow: hidden; }
 .feat-score-meter i { display: block; height: 100%; border-radius: 99px; background: var(--grad-accent); transition: width 600ms cubic-bezier(0.22, 1, 0.36, 1); }
+.feat-verdict { margin: 0; color: var(--muted); font-size: 0.92rem; line-height: 1.6; }
+.feat-diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+.feat-diagnostic-grid div {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.72rem 0.78rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--glass-3);
+}
+.feat-diagnostic-grid b { font-family: var(--font-display); font-size: 1.08rem; color: var(--ink); }
+.feat-diagnostic-grid span { color: var(--soft); font-size: 0.72rem; }
 
-.feat-elements { display: grid; gap: 0.4rem; margin-top: 0.3rem; }
+.feat-elements { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.45rem; margin-top: 0.3rem; }
 .feat-element {
   display: grid;
   grid-template-columns: 1.5rem 1fr;
@@ -255,6 +272,53 @@ body.nav-open .feat-scrim { opacity: 1; visibility: visible; }
 .feat-element b { color: var(--ink); }
 .feat-element span { color: var(--soft); display: block; font-size: 0.78rem; }
 .feat-element.ok b::after { content: " ✓"; color: var(--good); }
+.feat-quality {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.55rem;
+}
+.feat-quality-item {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.72rem 0.8rem;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line);
+  background: var(--glass-3);
+}
+.feat-quality-item.ok { border-color: rgba(65, 151, 101, 0.45); background: var(--good-tint); }
+.feat-quality-item.miss { border-color: rgba(217, 138, 43, 0.42); background: var(--gold-tint); }
+.feat-quality-item b { color: var(--ink); font-size: 0.86rem; }
+.feat-quality-item span { color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
+.feat-suggestion {
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--accent-tint);
+}
+.feat-suggestion ol { margin: 0.55rem 0 0; padding-left: 1.25rem; }
+.feat-suggestion li { color: var(--muted); margin: 0.32rem 0; }
+.feat-improved {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--glass-3);
+}
+.feat-improved pre {
+  max-height: 22rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.8rem;
+  border-radius: var(--radius-s);
+  background: var(--code-bg);
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
 
 .feat-hint-list { margin: 0; padding-left: 1.1rem; }
 .feat-hint-list li { color: var(--muted); font-size: 0.86rem; }

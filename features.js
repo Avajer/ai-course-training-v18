@@ -1,7 +1,7 @@
 /* ==========================================================================
    ИИ-ПРАКТИКУМ — слой расширений (features.js)
    Загружается ПОСЛЕ script.js. Работает на статике (GitHub Pages):
-   тренажёр промптов, защищённая песочница модели, личная библиотека,
+   тренажёр промптов, личная библиотека,
    карточки глоссария, поиск, диагностика, сертификат, онбординг,
    мобильное меню, радар результатов, конфетти.
    Любая ошибка в одном модуле не должна ронять базовый курс — всё в try.
@@ -9,7 +9,7 @@
 (function () {
   "use strict";
 
-  var COURSE_VERSION = "v42";
+  var COURSE_VERSION = "v43";
   var LS = {
     mylib: "aiCourseMyPrompts",
     tour: "aiCourseTourSeenV1",
@@ -109,7 +109,7 @@
   }
 
   /* =========================================================================
-     2. ТРЕНАЖЁР ПРОМПТОВ (эвристика, без сети) + ПЕСОЧНИЦА (свой ключ)
+     2. ТРЕНАЖЁР ПРОМПТОВ (эвристика, без сети)
      ========================================================================= */
   /* Примечание: \b в JS работает только для ASCII, поэтому для кириллицы
      границы слов не используем — опираемся на достаточно специфичные основы. */
@@ -132,29 +132,105 @@
 
   function analyzePrompt(text) {
     var t = text || "";
-    var found = PROMPT_ELEMENTS.map(function (el) { return { el: el, ok: el.re.test(t) }; });
+    var found = PROMPT_ELEMENTS.map(function (el) { return { el: el, ok: el.re.test(t), weight: 12 }; });
     var okCount = found.filter(function (f) { return f.ok; }).length;
     var words = (t.trim().match(/\S+/g) || []).length;
-    var pct = Math.round((okCount / PROMPT_ELEMENTS.length) * 100);
-    return { found: found, okCount: okCount, words: words, pct: pct };
+    var chars = t.trim().length;
+    var signals = [
+      {
+        key: "specific",
+        name: "Конкретика",
+        ok: /(\d+|период|срок|критери|порог|пример|раздел|таблиц|контрагент|сумм|документ|аудит|провер)/i.test(t),
+        hint: "Добавьте период, объект, критерии, порог существенности или пример исходных данных."
+      },
+      {
+        key: "verification",
+        name: "Проверяемость",
+        ok: /(проверь|сверь|укажи\s+основан|источник|цитат|факт|гипотез|допущен|неопредел|что\s+проверить)/i.test(t),
+        hint: "Попросите отделить факты от гипотез и указать, что нужно проверить вручную."
+      },
+      {
+        key: "privacy",
+        name: "Безопасность данных",
+        ok: /(обезлич|без\s+персональн|конфиденциальн|служебн|не\s+раскрыв|условн(?:ый|ые)\s+данн|замени\s+данные)/i.test(t),
+        hint: "Если задача рабочая, явно задайте правило: использовать обезличенные или условные данные."
+      },
+      {
+        key: "iteration",
+        name: "Следующий шаг",
+        ok: /(если\s+данных\s+недостаточно|задай\s+вопрос|уточни|сначала\s+спроси|предложи\s+улучшен|после\s+ответа|вариант\s+доработ)/i.test(t),
+        hint: "Добавьте правило: если данных мало, сначала задать уточняющие вопросы."
+      }
+    ];
+    var signalCount = signals.filter(function (s) { return s.ok; }).length;
+    var baseScore = okCount * 12;
+    var signalScore = signalCount * 4;
+    var lengthScore = words >= 25 ? 8 : words >= 12 ? 4 : words >= 5 ? 2 : 0;
+    var pct = Math.min(100, Math.round(baseScore + signalScore + lengthScore));
+    var missing = found.filter(function (f) { return !f.ok; });
+    var missingSignals = signals.filter(function (s) { return !s.ok; });
+    var level = pct >= 86 ? "Сильный" : pct >= 68 ? "Рабочий" : pct >= 45 ? "Черновой" : "Слабый";
+    return { found: found, okCount: okCount, words: words, chars: chars, pct: pct, level: level, missing: missing, signals: signals, signalCount: signalCount, missingSignals: missingSignals };
   }
 
   function trainerVerdict(pct, words) {
     if (words < 4) return "Слишком коротко — это похоже на вопрос, а не на рабочую инструкцию.";
-    if (pct >= 86) return "Сильный рабочий промпт: модели почти не из чего «фантазировать».";
-    if (pct >= 57) return "Рабочая основа. Добавьте недостающие опоры — и результат станет стабильнее.";
+    if (pct >= 86) return "Сильный рабочий промпт: задача, рамки и проверка заданы достаточно ясно.";
+    if (pct >= 68) return "Рабочая основа. Добавьте недостающие опоры, чтобы ответ стал стабильнее.";
+    if (pct >= 45) return "Промпт можно использовать как черновик, но результат будет зависеть от догадок ИИ.";
     return "Промпт расплывчатый. Соберите его по формуле: роль + задача + контекст + данные + формат + стиль + ограничения.";
+  }
+
+  function promptPriority(r) {
+    var priority = [];
+    ["task", "data", "format", "limits", "context", "role", "style"].forEach(function (key) {
+      var miss = r.missing.find(function (f) { return f.el.key === key; });
+      if (miss) priority.push(miss.el.hint);
+    });
+    r.missingSignals.slice(0, 2).forEach(function (s) { priority.push(s.hint); });
+    if (r.words < 12) priority.unshift("Раскройте задачу минимум в 2-3 предложениях: что нужно сделать, с какими данными и для кого.");
+    return priority.slice(0, 5);
+  }
+
+  function buildImprovedPrompt(text, r) {
+    var clean = (text || "").trim();
+    var has = function (key) { return r.found.some(function (f) { return f.el.key === key && f.ok; }); };
+    var lines = [];
+    lines.push(has("role") ? "Роль: используй роль, указанную в моем запросе." : "Роль: выступи как опытный специалист по [укажите сферу: аудит, контроль, финансы, документы].");
+    lines.push(has("context") ? "Контекст: учитывай цель и адресата из моего запроса." : "Контекст: результат нужен для [адресат/ситуация], цель - [что должно быть принято или подготовлено].");
+    lines.push(has("task") ? "Задача: выполни действие, указанное ниже." : "Задача: проанализируй / проверь / составь [что именно нужно сделать].");
+    lines.push(has("data") ? "Исходные данные: используй только данные из запроса ниже." : "Исходные данные: [вставьте обезличенный текст, таблицу, перечень фактов или условия задачи].");
+    lines.push(has("format") ? "Формат: сохрани требуемую структуру ответа." : "Формат результата: таблица или список с разделами: вывод, основания, риски, что проверить, рекомендации.");
+    lines.push(has("style") ? "Стиль: соблюдай заданный тон." : "Стиль: деловой, краткий, без эмоциональных оценок и лишней воды.");
+    lines.push(has("limits") ? "Ограничения: соблюдай указанные рамки и критерии." : "Ограничения: не придумывай факты; если данных недостаточно, укажи, что нужно уточнить; отделяй факт от предположения.");
+    if (!r.signals.find(function (s) { return s.key === "verification"; }).ok) {
+      lines.push("Проверка: в конце добавь список ручных проверок и спорных мест.");
+    }
+    if (!r.signals.find(function (s) { return s.key === "privacy"; }).ok) {
+      lines.push("Безопасность: не используй персональные или конфиденциальные данные; работай с обезличенным примером.");
+    }
+    lines.push("");
+    lines.push("Мой исходный запрос:");
+    lines.push(clean || "[вставьте исходный запрос]");
+    return lines.join("\n");
   }
 
   function renderTrainerResult(box, text) {
     var r = analyzePrompt(text);
+    var priority = promptPriority(r);
+    var improved = buildImprovedPrompt(text, r);
     box.innerHTML =
       '<div class="feat-score">' +
         '<div class="feat-score-top"><span class="feat-section-label">Оценка промпта</span>' +
         '<span class="feat-score-num">' + r.pct + '%</span></div>' +
         '<div class="feat-score-meter"><i style="width:' + r.pct + '%"></i></div>' +
-        '<p style="margin:.2rem 0 0;color:var(--muted);font-size:.86rem">' + esc(trainerVerdict(r.pct, r.words)) +
-        ' <small style="color:var(--soft)">· слов: ' + r.words + ' · опор: ' + r.okCount + '/7</small></p>' +
+        '<div class="feat-diagnostic-grid">' +
+          '<div><b>' + esc(r.level) + '</b><span>уровень</span></div>' +
+          '<div><b>' + r.okCount + '/7</b><span>опор промпта</span></div>' +
+          '<div><b>' + r.signalCount + '/4</b><span>контроль качества</span></div>' +
+          '<div><b>' + r.words + '</b><span>слов</span></div>' +
+        '</div>' +
+        '<p class="feat-verdict">' + esc(trainerVerdict(r.pct, r.words)) + '</p>' +
         '<div class="feat-elements">' +
           r.found.map(function (f) {
             return '<div class="feat-element ' + (f.ok ? "ok" : "miss") + '">' +
@@ -163,190 +239,49 @@
             '</div>';
           }).join("") +
         '</div>' +
+        '<div class="feat-quality">' +
+          r.signals.map(function (s) {
+            return '<div class="feat-quality-item ' + (s.ok ? "ok" : "miss") + '">' +
+              '<b>' + (s.ok ? "✓ " : "— ") + esc(s.name) + '</b>' +
+              '<span>' + esc(s.ok ? "Учтено в запросе." : s.hint) + '</span>' +
+            '</div>';
+          }).join("") +
+        '</div>' +
+        '<div class="feat-suggestion"><span class="feat-section-label">Что улучшить в первую очередь</span>' +
+          '<ol>' + priority.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join("") + '</ol>' +
+        '</div>' +
+        '<div class="feat-improved">' +
+          '<div class="feat-score-top"><span class="feat-section-label">Улучшенная заготовка</span><button class="feat-mini-btn" type="button" data-copy-improved>Копировать</button></div>' +
+          '<pre>' + esc(improved) + '</pre>' +
+        '</div>' +
       '</div>';
-  }
-
-  /* ----- песочница: защищённый серверный мост Apps Script ----- */
-  var modelBridgeFrame = null;
-  var modelBridgeReady = null;
-  var modelBridgeReadyResolve = null;
-  var modelBridgeRequests = {};
-  var modelBridgeListenerBound = false;
-
-  function isTrustedBridgeOrigin(origin) {
-    return /^https:\/\/script\.google\.com$/.test(origin) || /^https:\/\/[^/]+\.googleusercontent\.com$/.test(origin);
-  }
-
-  function bindModelBridgeListener() {
-    if (modelBridgeListenerBound) return;
-    modelBridgeListenerBound = true;
-    window.addEventListener("message", function (event) {
-      if (!modelBridgeFrame || event.source !== modelBridgeFrame.contentWindow || !isTrustedBridgeOrigin(event.origin)) return;
-      var data = event.data || {};
-      if (data.type === "ai-course-model-ready") {
-        if (modelBridgeReadyResolve) modelBridgeReadyResolve();
-        return;
-      }
-      if (data.type !== "ai-course-model-response" || !data.requestId) return;
-      var pending = modelBridgeRequests[data.requestId];
-      if (!pending) return;
-      delete modelBridgeRequests[data.requestId];
-      clearTimeout(pending.timer);
-      if (data.ok) pending.resolve(data);
-      else pending.reject(new Error(data.error || "Модель не вернула ответ."));
-    });
-  }
-
-  function ensureModelBridge() {
-    if (modelBridgeReady) return modelBridgeReady;
-    if (typeof RESULTS_ENDPOINT === "undefined" || !RESULTS_ENDPOINT) {
-      return Promise.reject(new Error("Не указан адрес Apps Script."));
-    }
-    bindModelBridgeListener();
-    modelBridgeReady = new Promise(function (resolve, reject) {
-      modelBridgeReadyResolve = resolve;
-      modelBridgeFrame = document.createElement("iframe");
-      modelBridgeFrame.title = "Серверный мост модели";
-      modelBridgeFrame.setAttribute("aria-hidden", "true");
-      modelBridgeFrame.style.display = "none";
-      modelBridgeFrame.src = RESULTS_ENDPOINT + "?action=modelBridge&origin=" + encodeURIComponent(location.origin);
-      modelBridgeFrame.onerror = function () { reject(new Error("Не удалось открыть серверный мост.")); };
-      document.body.appendChild(modelBridgeFrame);
-      setTimeout(function () { reject(new Error("Серверный мост не ответил вовремя.")); }, 15000);
-    });
-    return modelBridgeReady;
-  }
-
-  function requestModel(prompt) {
-    var st = getState();
-    if (!st || !st.participant || !st.participant.authenticated) {
-      return Promise.reject(new Error("Сначала войдите в учетную запись курса."));
-    }
-    return ensureModelBridge().then(function () {
-      return new Promise(function (resolve, reject) {
-        var requestId = "model_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-        var timer = setTimeout(function () {
-          delete modelBridgeRequests[requestId];
-          reject(new Error("Модель не ответила за 45 секунд."));
-        }, 45000);
-        modelBridgeRequests[requestId] = { resolve: resolve, reject: reject, timer: timer };
-        modelBridgeFrame.contentWindow.postMessage({
-          type: "ai-course-model-request",
-          requestId: requestId,
-          prompt: prompt,
-          participant: {
-            name: st.participant.name,
-            department: st.participant.department || "",
-            passwordHash: st.participant.passwordHash
-          }
-        }, "*");
-      });
-    });
-  }
-
-  function requestModelHealth() {
-    if (typeof RESULTS_ENDPOINT === "undefined" || !RESULTS_ENDPOINT) {
-      return Promise.reject(new Error("Не указан адрес Apps Script."));
-    }
-    return new Promise(function (resolve, reject) {
-      var callbackName = "aiCourseModelHealth_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-      var script = document.createElement("script");
-      var timer = setTimeout(function () {
-        cleanup();
-        reject(new Error("Apps Script не ответил на проверку подключения."));
-      }, 12000);
-
-      function cleanup() {
-        clearTimeout(timer);
-        if (script.parentNode) script.parentNode.removeChild(script);
-        try { delete window[callbackName]; } catch (e) { window[callbackName] = undefined; }
-      }
-
-      window[callbackName] = function (payload) {
-        cleanup();
-        resolve(payload || {});
-      };
-      script.onerror = function () {
-        cleanup();
-        reject(new Error("Не удалось открыть Apps Script. Проверьте публикацию Web App."));
-      };
-      script.src = RESULTS_ENDPOINT + "?action=modelHealth&callback=" + encodeURIComponent(callbackName) + "&_=" + Date.now();
-      document.head.appendChild(script);
-    });
+    var copy = box.querySelector("[data-copy-improved]");
+    if (copy) copy.addEventListener("click", function () { copyText(improved); toast("Улучшенный промпт скопирован."); });
   }
 
   function openSandbox(prefill) {
     var content =
       '<div>' +
         '<span class="feat-section-label">Ваш промпт</span>' +
-        '<textarea class="feat-field" id="sbInput" placeholder="Соберите промпт по формуле…">' + esc(prefill || "") + '</textarea>' +
+        '<textarea class="feat-field feat-prompt-field" id="sbInput" placeholder="Опишите рабочую задачу: роль, контекст, исходные данные, формат результата и ограничения…">' + esc(prefill || "") + '</textarea>' +
       '</div>' +
       '<div class="feat-actions">' +
-        '<button class="feat-btn" id="sbCheck" type="button">Проверить промпт</button>' +
-        '<button class="feat-btn sec" id="sbRun" type="button">Отправить модели</button>' +
+        '<button class="feat-btn" id="sbCheck" type="button">Проверить и улучшить</button>' +
         '<button class="feat-btn sec" id="sbSave" type="button">★ В мою библиотеку</button>' +
-        '<button class="feat-btn ghost" id="sbKey" type="button">О подключении</button>' +
       '</div>' +
-      '<div id="sbResult"></div>' +
-      '<div><span class="feat-section-label">Ответ модели</span>' +
-        '<div class="feat-sandbox-out is-empty" id="sbOut">Здесь появится ответ подключенной модели. Ключ хранится на сервере и не передается в браузер.</div>' +
-      '</div>' +
-      '<div id="sbKeyBox"></div>';
+      '<div id="sbResult" class="feat-sandbox-result"></div>';
 
     openPanel({
       title: "🧪 Песочница промптов",
-      subtitle: "Оцените промпт по 7 опорам или отправьте его подключенной модели DeepSeek.",
+      subtitle: "Офлайн-проверка промпта: структура, конкретика, безопасность и проверяемость. Ничего не отправляется во внешний сервис.",
       content: content,
       onMount: function (root) {
         var input = $("#sbInput", root);
         $("#sbCheck", root).addEventListener("click", function () { renderTrainerResult($("#sbResult", root), input.value); });
-        $("#sbRun", root).addEventListener("click", function () { runSandbox(input.value, $("#sbOut", root), $("#sbRun", root)); });
         $("#sbSave", root).addEventListener("click", function () { saveToMyLib(input.value); });
-        $("#sbKey", root).addEventListener("click", function () { toggleModelInfo($("#sbKeyBox", root)); });
         if (prefill) renderTrainerResult($("#sbResult", root), prefill);
       }
     });
-  }
-
-  function toggleModelInfo(host) {
-    if (host.firstChild) { host.innerHTML = ""; return; }
-    host.innerHTML =
-      '<div class="feat-key-box">' +
-        '<strong>Подключенная модель</strong>' +
-        '<p class="feat-key-note">Запрос проходит через защищенный Google Apps Script. API-ключ находится в свойствах серверного проекта и не виден участникам, исходному коду GitHub Pages или инструментам браузера.</p>' +
-        '<p class="feat-key-note">Доступ разрешен только зарегистрированным активным участникам курса. Не отправляйте конфиденциальные сведения, если модельный контур не согласован вашей организацией.</p>' +
-        '<button class="feat-btn sec" id="sbModelHealth" type="button">Проверить подключение</button>' +
-        '<div class="feat-key-note" id="sbModelHealthOut"></div>' +
-      '</div>';
-    $("#sbModelHealth", host).addEventListener("click", function () {
-      var out = $("#sbModelHealthOut", host);
-      out.textContent = "Проверяю Apps Script...";
-      requestModelHealth()
-        .then(function (health) {
-          if (!health || health.ok === false) {
-            out.textContent = "Apps Script ответил ошибкой: " + (health && health.error || "нет подробностей");
-            return;
-          }
-          var status = health.modelConfigured ? "ключ найден" : "ключ не найден";
-          out.textContent = "Статус: " + status + ". Модель: " + (health.modelId || "не указана") + ". API: " + (health.apiBase || "не указан") + ". " + (health.note || "");
-        })
-        .catch(function (error) {
-          out.textContent = error.message || String(error);
-        });
-    });
-  }
-
-  function runSandbox(prompt, out, btn) {
-    var text = (prompt || "").trim();
-    if (!text) { toast("Введите промпт."); return; }
-    out.classList.remove("is-empty");
-    out.innerHTML = '<span class="typing">Запрашиваю ответ модели…</span>';
-    btn.disabled = true;
-    requestModel(text).then(function (res) {
-      out.textContent = res.content || "Пустой ответ модели.";
-    }).catch(function (e) {
-      out.innerHTML = '<b style="color:var(--bad)">Не удалось получить ответ.</b> <small style="color:var(--soft)">' + esc(String(e && e.message || e)) + '</small>';
-    }).finally(function () { btn.disabled = false; });
   }
 
   /* =========================================================================
@@ -903,7 +838,7 @@
      ========================================================================= */
   var TOUR = [
     { t: "Добро пожаловать 👋", b: "Это практический курс по работе с нейросетями. Слева — цели, прогресс и блоки. Проходите по порядку и выполняйте практику." },
-    { t: "Тренажёр и песочница 🧪", b: "В любой момент откройте «Песочницу»: соберите промпт, получите оценку по 7 опорам и отправьте запрос подключенной модели без ввода личного API-ключа." },
+    { t: "Тренажёр и песочница 🧪", b: "В любой момент откройте «Песочницу»: соберите промпт, получите оценку по 7 опорам, увидьте слабые места и скопируйте улучшенную заготовку." },
     { t: "Карточки и поиск 🔎", b: "Повторяйте термины во флеш-карточках, ищите по всему курсу и сохраняйте удачные промпты в личную библиотеку." },
     { t: "Сертификат 🎓", b: "После итогового теста получите именной сертификат — печать в PDF или картинкой. Готовы начать?" }
   ];
