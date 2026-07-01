@@ -19,8 +19,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Geologica:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=50">
-  <link rel="stylesheet" href="features.css?v=50">
+  <link rel="stylesheet" href="styles.css?v=51">
+  <link rel="stylesheet" href="features.css?v=51">
 </head>
 <body class="tpl-course-module">
   <div class="deck app-shell">
@@ -64,7 +64,7 @@
           <div class="hero-stat"><strong>21</strong><span>учебный блок</span></div>
           <div class="hero-stat"><strong>109</strong><span>вопросов контроля</span></div>
           <div class="hero-stat"><strong>54</strong><span>шаблона промптов</span></div>
-          <div class="hero-stat"><strong>24</strong><span>термина в глоссарии</span></div>
+          <div class="hero-stat"><strong>34</strong><span>термина в глоссарии</span></div>
           <div class="hero-stat"><strong>≈5 ч</strong><span>на полный курс</span></div>
         </div>
         <aside class="notes">
@@ -92,13 +92,13 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="script.js?v=50"></script>
-  <script src="features.js?v=50"></script>
+  <script src="script.js?v=51"></script>
+  <script src="features.js?v=51"></script>
   <script>
     /* PWA: офлайн-режим и установка как приложение (только на https / localhost) */
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        var reloadedKey = "aiCourseSwReloadedV50";
+        var reloadedKey = "aiCourseSwReloadedV51";
         var onControllerChange = function () {
           if (sessionStorage.getItem(reloadedKey)) return;
           sessionStorage.setItem(reloadedKey, "1");
