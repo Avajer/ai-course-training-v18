@@ -1,7 +1,7 @@
 const STORAGE_KEY = "aiCourseProgressV19";          // старый общий блок (только для разовой миграции)
 const SESSION_KEY = "aiCourseSessionV26";           // кто сейчас вошёл (участник + статус)
 const PROGRESS_PREFIX = "aiCourseProgressV26::";    // прогресс отдельно для каждого участника
-const PROGRESS_FIELDS = ["modules", "moduleSync", "finalAnswers", "finalAttempt", "practice", "openAnswers", "checks", "finalSubmitted", "resultStatus"];
+const PROGRESS_FIELDS = ["modules", "moduleSync", "finalAnswers", "finalAttempt", "practice", "openAnswers", "checks", "finalSubmitted", "resultStatus", "experience"];
 const THEME_KEY = "aiCourseTheme";
 
 function blankProgress() {
@@ -14,7 +14,8 @@ function blankProgress() {
     openAnswers: {},
     checks: {},
     finalSubmitted: false,
-    resultStatus: "не отправлено"
+    resultStatus: "не отправлено",
+    experience: window.CourseExperienceCore.blankExperience()
   };
 }
 
@@ -33,7 +34,7 @@ function loadProgressFor(participant) {
   const key = progressKeyFor(participant);
   if (!key) return blankProgress();
   try {
-    return { ...blankProgress(), ...JSON.parse(localStorage.getItem(key) || "{}") };
+    return window.CourseExperienceCore.withExperience({ ...blankProgress(), ...JSON.parse(localStorage.getItem(key) || "{}") });
   } catch {
     return blankProgress();
   }
@@ -3355,6 +3356,22 @@ let revealObserver = null;
 ["glossaryButton", "topGlossaryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderGlossary()));
 ["resetButton", "topResetButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", resetProgress));
 
+window.courseExperienceHost = {
+  getState: () => state,
+  getExperienceState,
+  updateExperience,
+  getModules: () => modules,
+  isAuthenticated,
+  showToast,
+  renderNav,
+  renderRoadmap,
+  renderResultsOverview,
+  openModuleById(moduleId) {
+    const index = modules.findIndex((module) => module.id === moduleId);
+    if (index >= 0) renderModule(index);
+  }
+};
+
 initializeCourse();
 
 function initializeCourse() {
@@ -3423,8 +3440,18 @@ function saveState() {
 
 // Подменяет прогресс в памяти на прогресс указанного участника (используется при входе/выходе).
 function applyProgress(progress) {
-  const next = progress || blankProgress();
+  const next = window.CourseExperienceCore.withExperience(progress || blankProgress());
   PROGRESS_FIELDS.forEach((field) => { state[field] = next[field]; });
+}
+
+function getExperienceState() {
+  state.experience = window.CourseExperienceCore.normalizeExperience(state.experience);
+  return state.experience;
+}
+
+function updateExperience(nextExperience) {
+  state.experience = window.CourseExperienceCore.normalizeExperience(nextExperience);
+  saveState();
 }
 
 function isAuthenticated() {
