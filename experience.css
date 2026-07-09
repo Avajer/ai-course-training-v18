@@ -64,6 +64,27 @@
 .experience-status.is-saved { border-color: var(--good); }
 @keyframes status-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+.personal-insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.7rem; margin: 1rem 0; }
+.personal-insight-card { padding: 1rem; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-tint); }
+.personal-insight-card span { font-family: var(--font-mono); color: var(--accent); font-size: 0.72rem; }
+.personal-insight-card h4 { margin: 0.4rem 0; font-size: 0.95rem; }
+.personal-insight-card p { margin: 0; color: var(--muted); font-size: 0.84rem; line-height: 1.45; }
+
+.prompt-card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.save-prompt-button { padding: 0.58rem 0.8rem; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--glass-2); color: var(--ink); font: inherit; font-size: 0.8rem; font-weight: 700; }
+.save-prompt-button.is-saved { border-color: var(--good); background: var(--good-tint); }
+.prompt-note { display: grid; gap: 0.35rem; margin-top: 0.75rem; }
+.prompt-note span { color: var(--soft); font-size: 0.75rem; font-weight: 700; }
+.prompt-note textarea { min-height: 4.2rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 10px; background: var(--field-bg); color: var(--ink); font: inherit; font-size: 0.82rem; resize: vertical; }
+
+.work-case-options, .weak-answer-signals { display: grid; gap: 0.55rem; margin: 1rem 0; }
+.work-case-option, .weak-answer-signals button { padding: 0.8rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: var(--glass-2); color: var(--ink); font: inherit; text-align: left; }
+.work-case-option:hover, .weak-answer-signals button:hover, .weak-answer-signals button.is-marked { border-color: var(--accent); background: var(--accent-tint); }
+.work-case-option.is-selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint-2); }
+.work-case-result, .weak-answer-result { padding: 0.85rem 1rem; border-left: 3px solid var(--gold); border-radius: 0 10px 10px 0; background: var(--gold-tint); color: var(--muted); line-height: 1.5; }
+.work-case-result.is-correct { border-left-color: var(--good); background: var(--good-tint); }
+.work-case-result.is-incorrect { border-left-color: var(--bad); }
+
 @media (max-width: 760px) {
   .hero-cycle__steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero-cycle__path { display: none; }

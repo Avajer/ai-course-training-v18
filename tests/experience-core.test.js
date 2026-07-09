@@ -44,3 +44,22 @@ test("defines six learning-cycle steps with unique course destinations", () => {
   assert.equal(new Set(core.CYCLE_STEPS.map((step) => step.moduleId)).size, 6);
   assert.equal(core.CYCLE_STEPS[0].label, "Задача");
 });
+
+test("returns only weak final-test categories as personal insights", () => {
+  const questions = [
+    { category: "security", answer: 1 },
+    { category: "prompt", answer: 0 },
+    { category: "prompt", answer: 2 }
+  ];
+  const insights = core.buildErrorInsights(questions, { 0: 0, 1: 0, 2: 2 });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(insights.map((item) => [item.category, item.count]))),
+    [["security", 1]]
+  );
+});
+
+test("removes a prompt from the collection on the second action", () => {
+  const saved = core.toggleSavedPrompt(core.blankExperience(), "audit-plan");
+  const removed = core.toggleSavedPrompt(saved, "audit-plan");
+  assert.deepEqual(JSON.parse(JSON.stringify(removed.savedPrompts)), []);
+});

@@ -68,8 +68,27 @@
     return { level: "allowed", title: "Можно использовать для черновика" };
   }
 
-  function buildErrorInsights() {
-    return [];
+  const ERROR_INSIGHT_COPY = Object.freeze({
+    basics: { title: "Недостаточно контекста", action: "Сформулируйте рабочий результат, адресата и исходные условия до запроса." },
+    prompt: { title: "Нет критериев проверки", action: "Указывайте формат, ограничения, критерии качества и следующий шаг." },
+    tools: { title: "Инструмент выбран без сравнения", action: "Сначала сопоставьте задачу, данные, доступный контур и нужные возможности." },
+    verification: { title: "Слишком много доверия ответу", action: "Проверяйте цифры, источники, допущения и применимость вывода вручную." },
+    security: { title: "Риск работы с данными", action: "Проверьте категорию данных и используйте только допустимый контур." },
+    docs: { title: "Документ не проверен человеком", action: "Сверяйте важные формулировки с исходным документом и требованиями задачи." }
+  });
+
+  function buildErrorInsights(questions = [], answers = {}) {
+    const counts = questions.reduce((result, question, index) => {
+      if (Number(answers[index]) !== question.answer && question.category) {
+        result[question.category] = (result[question.category] || 0) + 1;
+      }
+      return result;
+    }, {});
+    return Object.entries(counts).map(([category, count]) => ({
+      category,
+      count,
+      ...(ERROR_INSIGHT_COPY[category] || { title: "Нужна дополнительная практика", action: "Вернитесь к связанному блоку и выполните практическое задание." })
+    }));
   }
 
   function toggleSavedPrompt(experience, promptId) {
@@ -82,6 +101,7 @@
 
   root.CourseExperienceCore = {
     CYCLE_STEPS,
+    ERROR_INSIGHT_COPY,
     blankExperience,
     normalizeExperience,
     withExperience,
