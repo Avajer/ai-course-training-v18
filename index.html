@@ -23,35 +23,59 @@
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Geologica:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=55">
   <link rel="stylesheet" href="features.css?v=55">
+  <link rel="stylesheet" href="experience.css?v=55">
 </head>
 <body class="tpl-course-module">
   <div class="deck app-shell">
     <aside class="sidebar objective-rail" aria-label="Цели и навигация курса">
       <div class="brand">ИИ-практикум</div>
-      <h5>Цели курса</h5>
-      <p class="rail-hint">Нажмите на цель, чтобы перейти к связанным блокам.</p>
-      <ul id="objectiveList" class="obj-list"></ul>
-
-      <h5>Прогресс</h5>
-      <div class="progress-panel">
-        <div class="progress-top">
-          <span>Курс пройден</span>
-          <strong id="progressText">0%</strong>
+      <section class="experience-panel" data-experience-panel="objectives">
+        <button class="experience-panel__toggle" type="button" aria-expanded="true">
+          <span>Цели курса</span><span aria-hidden="true">⌃</span>
+        </button>
+        <div class="experience-panel__body">
+          <p class="rail-hint">Нажмите на цель, чтобы перейти к связанным блокам.</p>
+          <ul id="objectiveList" class="obj-list"></ul>
         </div>
-        <div class="progress-track" aria-hidden="true">
-          <div id="progressFill" class="progress-fill"></div>
+      </section>
+
+      <section class="experience-panel" data-experience-panel="progress">
+        <button class="experience-panel__toggle" type="button" aria-expanded="true">
+          <span>Прогресс</span><span aria-hidden="true">⌃</span>
+        </button>
+        <div class="experience-panel__body">
+          <div class="progress-panel">
+            <div class="progress-top">
+              <span>Курс пройден</span>
+              <strong id="progressText">0%</strong>
+            </div>
+            <div class="progress-track" aria-hidden="true">
+              <div id="progressFill" class="progress-fill"></div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <h5>Блоки курса</h5>
-      <nav id="moduleNav" class="module-nav"></nav>
+      <section class="experience-panel" data-experience-panel="modules">
+        <button class="experience-panel__toggle" type="button" aria-expanded="true">
+          <span>Блоки курса</span><span aria-hidden="true">⌃</span>
+        </button>
+        <div class="experience-panel__body"><nav id="moduleNav" class="module-nav"></nav></div>
+      </section>
 
-      <div class="sidebar-actions">
-        <button id="libraryButton" class="secondary-button" type="button">Библиотека промптов</button>
-        <button id="glossaryButton" class="secondary-button" type="button">Глоссарий</button>
-        <button id="finalButton" class="secondary-button" type="button">Итоговый тест</button>
-        <button id="resetButton" class="ghost-button" type="button">Сбросить прогресс</button>
-      </div>
+      <section class="experience-panel" data-experience-panel="actions">
+        <button class="experience-panel__toggle" type="button" aria-expanded="false">
+          <span>Быстрые действия</span><span aria-hidden="true">⌄</span>
+        </button>
+        <div class="experience-panel__body">
+          <div class="sidebar-actions">
+            <button id="libraryButton" class="secondary-button" type="button">Библиотека промптов</button>
+            <button id="glossaryButton" class="secondary-button" type="button">Глоссарий</button>
+            <button id="finalButton" class="secondary-button" type="button">Итоговый тест</button>
+            <button id="resetButton" class="ghost-button" type="button">Сбросить прогресс</button>
+          </div>
+        </div>
+      </section>
     </aside>
 
     <main class="main course-main" id="main" tabindex="-1">
@@ -62,6 +86,7 @@
         <p class="kicker">Начальный уровень · для работников · Агван</p>
         <h1 class="h1 mt-s">ИИ для работы:<br><em>от первого запроса до проверенного результата</em></h1>
         <p class="lede mt-l">Практический курс для работников: как ставить запрос, проверять ответ и безопасно использовать ИИ в реальных задачах.</p>
+        <section id="heroCycle" class="hero-cycle" aria-label="Рабочий цикл использования ИИ"></section>
         <div class="hero-stats" aria-label="Параметры курса">
           <div class="hero-stat"><strong>21</strong><span>учебный блок</span></div>
           <div class="hero-stat"><strong>109</strong><span>вопросов контроля</span></div>
@@ -83,6 +108,8 @@
         <button id="topResetButton" class="ghost-button" type="button">Сбросить прогресс</button>
       </div>
 
+      <div id="lessonProgressBar" aria-live="polite"></div>
+
       <section id="participantView" class="participant-card" aria-label="Данные участника"></section>
 
       <section id="resultsOverview" class="results-overview" aria-label="Результаты участника"></section>
@@ -96,6 +123,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="experience-core.js?v=55"></script>
   <script src="script.js?v=55"></script>
+  <script src="experience.js?v=55"></script>
   <script src="features.js?v=55"></script>
   <script>
     /* PWA: офлайн-режим и установка как приложение (только на https / localhost) */

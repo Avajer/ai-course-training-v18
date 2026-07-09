@@ -3335,7 +3335,6 @@ let currentView = "module";
 let currentModuleIndex = 0;
 let libraryFilter = "all";
 let deptBlockFilter = null; // фильтр промптов в блоке 20 (null = свой департамент)
-let roadmapCollapsed = true; // карта курса свёрнута по умолчанию (короткая «плашка»)
 let statusMonitorStarted = false;
 let statusCheckInFlight = null;
 
@@ -3361,6 +3360,7 @@ window.courseExperienceHost = {
   getExperienceState,
   updateExperience,
   getModules: () => modules,
+  getCurrentModuleIndex: () => currentModuleIndex,
   isAuthenticated,
   showToast,
   renderNav,
@@ -4230,6 +4230,7 @@ function requestAuth(action, data) {
 function renderRoadmap() {
   const locked = !isAuthenticated();
   const doneCount = modules.filter((m) => state.modules[m.id]?.submitted).length;
+  const roadmapCollapsed = getExperienceState().roadmapCollapsed;
   if (locked) {
     roadmapView.innerHTML = `
       <div class="section-band results-empty locked-roadmap">
@@ -4267,7 +4268,10 @@ function renderRoadmap() {
   `;
 
   document.getElementById("roadmapToggle")?.addEventListener("click", () => {
-    roadmapCollapsed = !roadmapCollapsed;
+    const experience = getExperienceState();
+    experience.roadmapCollapsed = !experience.roadmapCollapsed;
+    updateExperience(experience);
+    const roadmapCollapsed = experience.roadmapCollapsed;
     const grid = roadmapView.querySelector(".roadmap-grid");
     if (grid) grid.classList.toggle("is-collapsed", roadmapCollapsed);
     const btn = document.getElementById("roadmapToggle");

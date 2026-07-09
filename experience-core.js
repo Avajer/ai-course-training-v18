@@ -6,6 +6,15 @@
     actions: false
   });
 
+  const CYCLE_STEPS = Object.freeze([
+    { id: "task", label: "Задача", detail: "Определите рабочий результат", moduleId: "intro" },
+    { id: "context", label: "Контекст", detail: "Укажите адресата и условия", moduleId: "prompt" },
+    { id: "request", label: "Запрос", detail: "Соберите сильный промпт", moduleId: "formula" },
+    { id: "draft", label: "Черновик", detail: "Получите первый вариант", moduleId: "iterations" },
+    { id: "verify", label: "Проверка", detail: "Проверьте факты и риски", moduleId: "verification" },
+    { id: "apply", label: "Применение", detail: "Сохраните рабочий шаблон", moduleId: "final-practice" }
+  ]);
+
   function blankExperience() {
     return {
       panels: { ...PANEL_DEFAULTS },
@@ -72,6 +81,7 @@
   }
 
   root.CourseExperienceCore = {
+    CYCLE_STEPS,
     blankExperience,
     normalizeExperience,
     withExperience,

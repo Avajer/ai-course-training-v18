@@ -38,3 +38,9 @@ test("adds personal experience preferences to legacy progress without replacing 
   assert.equal(progress.openAnswers["intro:0"], "Ответ");
   assert.equal(progress.experience.panels.modules, true);
 });
+
+test("defines six learning-cycle steps with unique course destinations", () => {
+  assert.equal(core.CYCLE_STEPS.length, 6);
+  assert.equal(new Set(core.CYCLE_STEPS.map((step) => step.moduleId)).size, 6);
+  assert.equal(core.CYCLE_STEPS[0].label, "Задача");
+});
