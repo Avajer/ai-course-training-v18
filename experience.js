@@ -1,0 +1,176 @@
+(function () {
+  const core = window.CourseExperienceCore;
+  const host = window.courseExperienceHost;
+  if (!core || !host) return;
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const escapeHtml = (value) => String(value).replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]);
+
+  function reducedMotion() {
+    return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function renderHeroCycle() {
+    const target = $("#heroCycle");
+    if (!target) return;
+    target.innerHTML = `
+      <div class="hero-cycle__lead">
+        <span>Рабочий цикл</span>
+        <strong>От задачи к проверенному результату</strong>
+      </div>
+      <svg class="hero-cycle__path" viewBox="0 0 1000 80" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M65 40 H935" pathLength="100" />
+        <circle class="hero-cycle__marker" cx="65" cy="40" r="7" />
+      </svg>
+      <div class="hero-cycle__steps">
+        ${core.CYCLE_STEPS.map((step, index) => `
+          <button class="hero-cycle__step" type="button" style="--index:${index}" data-cycle-module="${step.moduleId}">
+            <span class="hero-cycle__number">0${index + 1}</span>
+            <strong>${escapeHtml(step.label)}</strong>
+            <small>${escapeHtml(step.detail)}</small>
+          </button>
+        `).join("")}
+      </div>
+    `;
+    target.querySelectorAll("[data-cycle-module]").forEach((button) => {
+      button.addEventListener("click", () => {
+        host.openModuleById(button.dataset.cycleModule);
+        window.setTimeout(() => $("#contentView")?.focus(), 0);
+      });
+    });
+    target.dataset.motion = reducedMotion() ? "reduced" : "full";
+  }
+
+  function enhanceSidebar() {
+    document.querySelectorAll("[data-experience-panel]").forEach((panel) => {
+      if (panel.dataset.experienceReady === "true") return;
+      const key = panel.dataset.experiencePanel;
+      const button = $(".experience-panel__toggle", panel);
+      if (!button) return;
+      panel.dataset.experienceReady = "true";
+      button.addEventListener("click", () => {
+        const next = core.toggleExperiencePanel(host.getExperienceState(), key);
+        host.updateExperience(next);
+        applyPanelState(panel, next.panels[key]);
+      });
+    });
+    const preferences = host.getExperienceState().panels;
+    document.querySelectorAll("[data-experience-panel]").forEach((panel) => {
+      applyPanelState(panel, preferences[panel.dataset.experiencePanel]);
+    });
+  }
+
+  function applyPanelState(panel, expanded) {
+    const button = $(".experience-panel__toggle", panel);
+    panel.classList.toggle("is-collapsed", !expanded);
+    button?.setAttribute("aria-expanded", String(Boolean(expanded)));
+    const marker = button?.querySelector("span:last-child");
+    if (marker) marker.textContent = expanded ? "⌃" : "⌄";
+  }
+
+  function renderLessonProgress() {
+    const target = $("#lessonProgressBar");
+    if (!target) return;
+    if (!host.isAuthenticated()) { target.innerHTML = ""; return; }
+    const modules = host.getModules();
+    const currentIndex = host.getCurrentModuleIndex();
+    const current = modules[currentIndex];
+    const completed = modules.filter((module) => host.getState().modules[module.id]?.submitted).length;
+    const next = core.findNextAction(modules, host.getState());
+    target.innerHTML = current ? `
+      <section class="lesson-progress-bar">
+        <span class="lesson-progress-bar__index">${currentIndex + 1}/${modules.length}</span>
+        <strong>${escapeHtml(current.title)}</strong>
+        <span class="lesson-progress-bar__count">${completed} пройдено</span>
+        <button type="button" class="lesson-progress-bar__continue" data-continue-module="${next.moduleId || ""}" ${next.complete ? "disabled" : ""}>${next.complete ? "Курс завершён" : "Продолжить"}</button>
+      </section>
+    ` : "";
+    $("[data-continue-module]", target)?.addEventListener("click", (event) => {
+      const id = event.currentTarget.dataset.continueModule;
+      if (id) host.openModuleById(id);
+    });
+  }
+
+  function enhanceLesson() {
+    const lesson = $("#contentView .lesson");
+    if (!lesson || lesson.dataset.experienceEnhanced === "true") return;
+    lesson.dataset.experienceEnhanced = "true";
+    const module = host.getModules()[host.getCurrentModuleIndex()];
+    if (!module) return;
+    const sections = [
+      ["theory", ".theory-section", "Теория"],
+      ["example", ".example-grid", "Пример"],
+      ["practice", ".practice-box", "Практика"],
+      ["review", ".open-question-box", "Рефлексия"],
+      ["video", ".lesson-video-section", "Видео"]
+    ];
+    sections.forEach(([sectionId, selector, label]) => {
+      const child = lesson.querySelector(selector);
+      const section = child?.classList.contains("section-band") ? child : child?.closest(".section-band");
+      if (!section || section.dataset.experienceDisclosure === "true") return;
+      const key = `${module.id}:${sectionId}`;
+      const saved = host.getExperienceState().lessonSections[key];
+      const expanded = saved !== false;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "lesson-disclosure__toggle";
+      button.innerHTML = `<span>${label}</span><span aria-hidden="true">${expanded ? "Свернуть" : "Показать"}</span>`;
+      button.setAttribute("aria-expanded", String(expanded));
+      button.addEventListener("click", () => {
+        const next = host.getExperienceState();
+        next.lessonSections[key] = section.classList.contains("is-collapsed");
+        host.updateExperience(next);
+        setDisclosureState(section, button, next.lessonSections[key]);
+      });
+      section.dataset.experienceDisclosure = "true";
+      section.prepend(button);
+      setDisclosureState(section, button, expanded);
+    });
+
+    lesson.querySelectorAll("[data-practice], [data-open]").forEach((field) => {
+      field.addEventListener("blur", () => announce("Сохранено на устройстве", "saved"));
+    });
+  }
+
+  function setDisclosureState(section, button, expanded) {
+    section.classList.toggle("is-collapsed", !expanded);
+    button.setAttribute("aria-expanded", String(expanded));
+    const status = button.querySelector("span:last-child");
+    if (status) status.textContent = expanded ? "Свернуть" : "Показать";
+  }
+
+  function announce(message, status) {
+    const old = $("#experienceStatus");
+    old?.remove();
+    const node = document.createElement("div");
+    node.id = "experienceStatus";
+    node.className = `experience-status is-${status}`;
+    node.setAttribute("role", "status");
+    node.textContent = message;
+    document.body.appendChild(node);
+    window.setTimeout(() => node.remove(), 2200);
+  }
+
+  function observeContent() {
+    const target = $("#contentView");
+    if (!target) return;
+    const observer = new MutationObserver(() => {
+      window.requestAnimationFrame(() => {
+        enhanceLesson();
+        renderLessonProgress();
+      });
+    });
+    observer.observe(target, { childList: true, subtree: true });
+  }
+
+  function init() {
+    renderHeroCycle();
+    enhanceSidebar();
+    enhanceLesson();
+    renderLessonProgress();
+    observeContent();
+  }
+
+  window.CourseExperience = { init, renderHeroCycle, enhanceSidebar, enhanceLesson, renderLessonProgress, announce };
+  init();
+})();

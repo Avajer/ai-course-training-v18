@@ -1,0 +1,65 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import vm from "node:vm";
+
+const source = fs.readFileSync(new URL("../experience-core.js", import.meta.url), "utf8");
+const sandbox = { window: {} };
+sandbox.globalThis = sandbox.window;
+vm.runInNewContext(source, sandbox);
+const core = sandbox.window.CourseExperienceCore;
+
+test("normalizes a missing experience state without sharing preferences", () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(core.normalizeExperience())), {
+    panels: { objectives: true, progress: true, modules: true, actions: false },
+    roadmapCollapsed: true,
+    lessonSections: {},
+    savedPrompts: [],
+    promptNotes: {}
+  });
+});
+
+test("classifies sensitive, high-cost external work as restricted", () => {
+  assert.equal(
+    core.classifyTask({ data: "sensitive", cost: "high", goal: "external" }).level,
+    "restricted"
+  );
+});
+
+test("selects the first unfinished module as the next action", () => {
+  const modules = [{ id: "intro", title: "Введение" }, { id: "prompt", title: "Промпт" }];
+  const progress = { modules: { intro: { submitted: true } } };
+  assert.equal(core.findNextAction(modules, progress).moduleId, "prompt");
+});
+
+test("adds personal experience preferences to legacy progress without replacing answers", () => {
+  const progress = core.withExperience({ modules: { intro: { score: 4 } }, openAnswers: { "intro:0": "Ответ" } });
+  assert.equal(progress.modules.intro.score, 4);
+  assert.equal(progress.openAnswers["intro:0"], "Ответ");
+  assert.equal(progress.experience.panels.modules, true);
+});
+
+test("defines six learning-cycle steps with unique course destinations", () => {
+  assert.equal(core.CYCLE_STEPS.length, 6);
+  assert.equal(new Set(core.CYCLE_STEPS.map((step) => step.moduleId)).size, 6);
+  assert.equal(core.CYCLE_STEPS[0].label, "Задача");
+});
+
+test("returns only weak final-test categories as personal insights", () => {
+  const questions = [
+    { category: "security", answer: 1 },
+    { category: "prompt", answer: 0 },
+    { category: "prompt", answer: 2 }
+  ];
+  const insights = core.buildErrorInsights(questions, { 0: 0, 1: 0, 2: 2 });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(insights.map((item) => [item.category, item.count]))),
+    [["security", 1]]
+  );
+});
+
+test("removes a prompt from the collection on the second action", () => {
+  const saved = core.toggleSavedPrompt(core.blankExperience(), "audit-plan");
+  const removed = core.toggleSavedPrompt(saved, "audit-plan");
+  assert.deepEqual(JSON.parse(JSON.stringify(removed.savedPrompts)), []);
+});

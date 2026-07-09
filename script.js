@@ -1,7 +1,7 @@
 const STORAGE_KEY = "aiCourseProgressV19";          // старый общий блок (только для разовой миграции)
 const SESSION_KEY = "aiCourseSessionV26";           // кто сейчас вошёл (участник + статус)
 const PROGRESS_PREFIX = "aiCourseProgressV26::";    // прогресс отдельно для каждого участника
-const PROGRESS_FIELDS = ["modules", "moduleSync", "finalAnswers", "finalAttempt", "practice", "openAnswers", "checks", "finalSubmitted", "resultStatus"];
+const PROGRESS_FIELDS = ["modules", "moduleSync", "finalAnswers", "finalAttempt", "practice", "openAnswers", "checks", "finalSubmitted", "resultStatus", "experience"];
 const THEME_KEY = "aiCourseTheme";
 
 function blankProgress() {
@@ -14,7 +14,8 @@ function blankProgress() {
     openAnswers: {},
     checks: {},
     finalSubmitted: false,
-    resultStatus: "не отправлено"
+    resultStatus: "не отправлено",
+    experience: window.CourseExperienceCore.blankExperience()
   };
 }
 
@@ -33,7 +34,7 @@ function loadProgressFor(participant) {
   const key = progressKeyFor(participant);
   if (!key) return blankProgress();
   try {
-    return { ...blankProgress(), ...JSON.parse(localStorage.getItem(key) || "{}") };
+    return window.CourseExperienceCore.withExperience({ ...blankProgress(), ...JSON.parse(localStorage.getItem(key) || "{}") });
   } catch {
     return blankProgress();
   }
@@ -83,7 +84,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v55";
+const COURSE_BUILD = "v56";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3334,7 +3335,6 @@ let currentView = "module";
 let currentModuleIndex = 0;
 let libraryFilter = "all";
 let deptBlockFilter = null; // фильтр промптов в блоке 20 (null = свой департамент)
-let roadmapCollapsed = true; // карта курса свёрнута по умолчанию (короткая «плашка»)
 let statusMonitorStarted = false;
 let statusCheckInFlight = null;
 
@@ -3354,6 +3354,23 @@ let revealObserver = null;
 ["finalButton", "topFinalButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderFinalTest()));
 ["glossaryButton", "topGlossaryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderGlossary()));
 ["resetButton", "topResetButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", resetProgress));
+
+window.courseExperienceHost = {
+  getState: () => state,
+  getExperienceState,
+  updateExperience,
+  getModules: () => modules,
+  getCurrentModuleIndex: () => currentModuleIndex,
+  isAuthenticated,
+  showToast,
+  renderNav,
+  renderRoadmap,
+  renderResultsOverview,
+  openModuleById(moduleId) {
+    const index = modules.findIndex((module) => module.id === moduleId);
+    if (index >= 0) renderModule(index);
+  }
+};
 
 initializeCourse();
 
@@ -3423,8 +3440,18 @@ function saveState() {
 
 // Подменяет прогресс в памяти на прогресс указанного участника (используется при входе/выходе).
 function applyProgress(progress) {
-  const next = progress || blankProgress();
+  const next = window.CourseExperienceCore.withExperience(progress || blankProgress());
   PROGRESS_FIELDS.forEach((field) => { state[field] = next[field]; });
+}
+
+function getExperienceState() {
+  state.experience = window.CourseExperienceCore.normalizeExperience(state.experience);
+  return state.experience;
+}
+
+function updateExperience(nextExperience) {
+  state.experience = window.CourseExperienceCore.normalizeExperience(nextExperience);
+  saveState();
 }
 
 function isAuthenticated() {
@@ -4203,6 +4230,7 @@ function requestAuth(action, data) {
 function renderRoadmap() {
   const locked = !isAuthenticated();
   const doneCount = modules.filter((m) => state.modules[m.id]?.submitted).length;
+  const roadmapCollapsed = getExperienceState().roadmapCollapsed;
   if (locked) {
     roadmapView.innerHTML = `
       <div class="section-band results-empty locked-roadmap">
@@ -4240,7 +4268,10 @@ function renderRoadmap() {
   `;
 
   document.getElementById("roadmapToggle")?.addEventListener("click", () => {
-    roadmapCollapsed = !roadmapCollapsed;
+    const experience = getExperienceState();
+    experience.roadmapCollapsed = !experience.roadmapCollapsed;
+    updateExperience(experience);
+    const roadmapCollapsed = experience.roadmapCollapsed;
     const grid = roadmapView.querySelector(".roadmap-grid");
     if (grid) grid.classList.toggle("is-collapsed", roadmapCollapsed);
     const btn = document.getElementById("roadmapToggle");
@@ -4432,6 +4463,7 @@ function renderModule(index, options = {}) {
       ${renderWorkGuidance(module)}
       ${renderModuleVideo(module)}
       ${module.checklistCards ? renderChecklistCards(module.checklistCards) : ""}
+      ${renderUniversalChecklist(module)}
 
       <section class="section-band theory-section">
         <div class="section-title-row">
@@ -4459,6 +4491,8 @@ function renderModule(index, options = {}) {
       ${module.taskClassifier ? renderTaskClassifier() : ""}
       ${module.elementDetails ? renderElementDetails(module.elementDetails) : ""}
       ${module.deepDive ? renderDeepDive(module.deepDive) : ""}
+      ${renderWorkCase(module)}
+      ${renderWeakAnswerDrill(module)}
 
       <section class="section-band">
         <h3>Пример</h3>
@@ -4525,6 +4559,8 @@ function renderModule(index, options = {}) {
 
   bindQuestionEvents(module.id);
   bindTaskClassifier();
+  bindWorkCase(module);
+  bindWeakAnswerDrill();
   document.getElementById("submitModule").addEventListener("click", () => submitModule(module));
   document.getElementById("nextModule").addEventListener("click", async () => {
     if (!(await requireActiveParticipant())) return;
@@ -4576,6 +4612,143 @@ function renderWorkGuidance(module) {
       </div>
     </section>
   `;
+}
+
+const WORK_CASES = {
+  tools: {
+    area: "Аудит и контроль",
+    situation: "Нужно подготовить черновик плана проверки закупки. У вас есть служебная таблица с контрагентами и суммами.",
+    question: "Какой следующий шаг безопасен и полезен?",
+    options: [
+      "Загрузить таблицу целиком во внешний чат и попросить найти риски.",
+      "Сначала заменить чувствительные поля учебным примером, определить критерии риска и сравнить подходящие инструменты.",
+      "Попросить ИИ сразу сформулировать итоговый вывод о нарушениях."
+    ],
+    answer: 1,
+    explanation: "ИИ может помочь со структурой плана и критериями проверки, но рабочие данные и итоговая квалификация требуют разрешенного контура и контроля специалиста."
+  },
+  risks: {
+    area: "Финансы",
+    situation: "Нужно объяснить руководителю отклонение исполнения бюджета за квартал.",
+    question: "Как использовать ИИ корректно?",
+    options: [
+      "Дать ИИ обезличенный фрагмент показателей, попросить структуру пояснительной записки и отдельно проверить расчеты.",
+      "Передать выгрузку со всеми реквизитами и использовать текст ИИ без проверки.",
+      "Не формулировать задачу: модель сама определит, какие цифры существенны."
+    ],
+    answer: 0,
+    explanation: "Для финансовых материалов ИИ подходит как помощник по структуре и вариантам объяснения. Цифры, период, основания и итоговый вывод проверяются вручную."
+  },
+  verification: {
+    area: "Правовая работа",
+    situation: "ИИ подготовил справку по вопросу применения нормы права и уверенно указал несколько источников.",
+    question: "Что сделать до использования справки?",
+    options: [
+      "Проверить каждый источник по официальной базе, отделить цитаты от интерпретации и уточнить применимость к обстоятельствам.",
+      "Считать ссылки достоверными, если стиль справки выглядит убедительно.",
+      "Использовать только итоговый абзац, чтобы не тратить время на проверку."
+    ],
+    answer: 0,
+    explanation: "Правдоподобная ссылка не равна существующему источнику. ИИ не заменяет правовую проверку и квалификацию обстоятельств."
+  },
+  docs: {
+    area: "Бухгалтерский учет",
+    situation: "Нужно проверить пояснительную записку на противоречия между разделами и единообразие терминов.",
+    question: "Какой запрос и действие подходят?",
+    options: [
+      "Попросить ИИ переписать весь документ и сразу подать его как финальный.",
+      "Передать обезличенный фрагмент, задать таблицу «фрагмент — возможное противоречие — что сверить» и проверить замечания по первичным данным.",
+      "Попросить ИИ подтвердить, что в документе нет ошибок."
+    ],
+    answer: 1,
+    explanation: "Полезный результат ИИ — список точек проверки, а не подтверждение корректности учетной информации."
+  },
+  "task-guard": {
+    area: "Строительный контроль",
+    situation: "Нужно подготовить перечень вопросов к акту освидетельствования работ и сопоставить его с проектной документацией.",
+    question: "Как действовать?",
+    options: [
+      "Загрузить полный комплект проектной документации в любой внешний сервис.",
+      "Использовать разрешенный контур или учебный фрагмент, попросить чек-лист вопросов и вручную сверить его с проектом и нормативными требованиями.",
+      "Поручить ИИ определить, соответствуют ли работы требованиям."
+    ],
+    answer: 1,
+    explanation: "ИИ помогает подготовить структуру проверки, но не заменяет технический контроль, доступ к исходной документации и ответственность специалиста."
+  }
+};
+
+const UNIVERSAL_CHECKLIST = [
+  ["Можно ли загружать эти данные?", "Определите категорию данных и разрешенный контур до передачи материала."],
+  ["Достаточно ли контекста?", "Укажите цель, адресата, период, исходные условия и ожидаемый формат."],
+  ["Что проверить вручную?", "Отметьте цифры, источники, нормативные основания и критичные формулировки."],
+  ["Где цена ошибки высокая?", "Не поручайте ИИ итоговый вывод по деньгам, правам, отчетности или безопасности."],
+  ["Можно ли использовать результат в документе?", "Используйте только проверенный и адаптированный человеком результат."]
+];
+
+function renderUniversalChecklist(module) {
+  if (module.id !== "risks") return "";
+  return renderChecklistCards(UNIVERSAL_CHECKLIST.map(([title, body]) => ({ title, body })));
+}
+
+function renderWorkCase(module) {
+  const item = WORK_CASES[module.id];
+  if (!item) return "";
+  const selected = state.checks?.[`case:${module.id}`];
+  return `
+    <section class="section-band work-case" data-work-case="${module.id}">
+      <div class="section-title-row"><div><p class="eyebrow">Рабочий кейс</p><h3>${item.area}</h3></div><span class="tag">выберите следующий шаг</span></div>
+      <p>${item.situation}</p><strong>${item.question}</strong>
+      <div class="work-case-options">
+        ${item.options.map((option, index) => `<button type="button" class="work-case-option ${selected === index ? "is-selected" : ""}" data-case-choice="${index}">${option}</button>`).join("")}
+      </div>
+      <div class="work-case-result" aria-live="polite">${selected === undefined ? "Выберите вариант и получите разбор." : (selected === item.answer ? `Верно. ${item.explanation}` : `Нужно иначе. ${item.explanation}`)}</div>
+    </section>`;
+}
+
+function renderWeakAnswerDrill(module) {
+  if (module.id !== "verification") return "";
+  return `
+    <section class="section-band weak-answer-drill" id="weakAnswerDrill">
+      <p class="eyebrow">Разбор слабого ответа ИИ</p><h3>Найдите рискованные фрагменты</h3>
+      <p>«По данным отчета отклонение составило 18,7%. Согласно статье 42 Положения, это однозначно подтверждает нарушение. Дополнительная проверка не требуется».</p>
+      <div class="weak-answer-signals">
+        <button type="button" data-weak-signal="number">18,7% без исходного расчета</button>
+        <button type="button" data-weak-signal="source">Ссылка без проверки источника</button>
+        <button type="button" data-weak-signal="conclusion">Категоричный вывод без условий</button>
+      </div>
+      <button type="button" class="secondary-button" data-reveal-weak>Показать разбор</button>
+      <div class="weak-answer-result" hidden>Проверяйте каждое число по источнику, открывайте нормативный акт в официальной базе и отделяйте факт от профессионального вывода. ИИ может сформировать правдоподобный, но неверный фрагмент.</div>
+    </section>`;
+}
+
+function bindWorkCase(module) {
+  const root = contentView.querySelector(`[data-work-case="${module.id}"]`);
+  const item = WORK_CASES[module.id];
+  if (!root || !item) return;
+  root.querySelectorAll("[data-case-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const choice = Number(button.dataset.caseChoice);
+      state.checks[`case:${module.id}`] = choice;
+      saveState();
+      root.querySelectorAll("[data-case-choice]").forEach((node) => node.classList.toggle("is-selected", node === button));
+      const result = root.querySelector(".work-case-result");
+      result.textContent = choice === item.answer ? `Верно. ${item.explanation}` : `Нужно иначе. ${item.explanation}`;
+      result.classList.toggle("is-correct", choice === item.answer);
+      result.classList.toggle("is-incorrect", choice !== item.answer);
+    });
+  });
+}
+
+function bindWeakAnswerDrill() {
+  const root = document.getElementById("weakAnswerDrill");
+  if (!root) return;
+  root.querySelectorAll("[data-weak-signal]").forEach((button) => {
+    button.addEventListener("click", () => button.classList.toggle("is-marked"));
+  });
+  root.querySelector("[data-reveal-weak]")?.addEventListener("click", () => {
+    const result = root.querySelector(".weak-answer-result");
+    result.hidden = false;
+  });
 }
 
 function renderModuleVideo(module) {
@@ -5273,6 +5446,8 @@ async function syncModuleResult(module) {
 
 // Карточка промпта (используется в библиотеке и в блоке департамента).
 function promptCardHtml(p, i, chipLabel, hideTag) {
+  const saved = getExperienceState().savedPrompts.includes(String(i));
+  const note = getExperienceState().promptNotes[String(i)] || "";
   return `
     <article class="prompt-card ${p.gold ? "is-gold" : ""}">
       <div>
@@ -5282,7 +5457,11 @@ function promptCardHtml(p, i, chipLabel, hideTag) {
       </div>
       <pre id="prompt-${i}">${escapeHtml(p.text)}</pre>
       ${p.note ? `<p class="lib-privacy">⚠️ В этом промпте возможны персональные или служебные данные. Обезличьте их сами перед отправкой в ИИ.</p>` : ""}
-      <button class="copy-button" type="button" data-copy="${i}">Скопировать</button>
+      <div class="prompt-card-actions">
+        <button class="copy-button" type="button" data-copy="${i}">Скопировать</button>
+        <button class="save-prompt-button ${saved ? "is-saved" : ""}" type="button" data-save-prompt="${i}">${saved ? "В моей подборке" : "Сохранить"}</button>
+      </div>
+      ${saved ? `<label class="prompt-note"><span>Моя заметка</span><textarea data-prompt-note="${i}" placeholder="Где применили и что стоит уточнить">${escapeHtml(note)}</textarea></label>` : ""}
     </article>`;
 }
 
@@ -5302,6 +5481,24 @@ function bindPromptCopy(root) {
   });
 }
 
+function bindPromptCollection(root) {
+  (root || contentView).querySelectorAll("[data-save-prompt]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const next = window.CourseExperienceCore.toggleSavedPrompt(getExperienceState(), button.dataset.savePrompt);
+      updateExperience(next);
+      showToast(next.savedPrompts.includes(button.dataset.savePrompt) ? "Промпт добавлен в вашу подборку." : "Промпт убран из вашей подборки.");
+      renderLibrary({ keepScroll: true });
+    });
+  });
+  (root || contentView).querySelectorAll("[data-prompt-note]").forEach((field) => {
+    field.addEventListener("input", () => {
+      const next = getExperienceState();
+      next.promptNotes[field.dataset.promptNote] = field.value;
+      updateExperience(next);
+    });
+  });
+}
+
 async function renderLibrary(options = {}) {
   if (!(await requireActiveParticipant())) return;
   currentView = "library";
@@ -5310,9 +5507,10 @@ async function renderLibrary(options = {}) {
   const present = [];
   promptLibrary.forEach((p) => { const d = p.dept || "universal"; if (!present.includes(d)) present.push(d); });
   present.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-  const filter = (libraryFilter === "all" || present.includes(libraryFilter)) ? libraryFilter : "all";
+  const savedIds = new Set(getExperienceState().savedPrompts);
+  const filter = (libraryFilter === "all" || libraryFilter === "saved" || present.includes(libraryFilter)) ? libraryFilter : "all";
   const chipLabel = (id) => id === "universal" ? "Универсальные" : (DEPARTMENTS.find((d) => d.id === id)?.name || id);
-  const visible = promptLibrary.map((p, i) => ({ p, i })).filter(({ p }) => filter === "all" || (p.dept || "universal") === filter);
+  const visible = promptLibrary.map((p, i) => ({ p, i })).filter(({ p, i }) => filter === "all" || (filter === "saved" ? savedIds.has(String(i)) : (p.dept || "universal") === filter));
   // Сортировка: по департаменту (порядок выше), затем по популярности (pop), затем по позиции.
   visible.sort((a, b) => {
     const da = order.indexOf(a.p.dept || "universal"), db = order.indexOf(b.p.dept || "universal");
@@ -5329,6 +5527,7 @@ async function renderLibrary(options = {}) {
       <p>Замените поля в квадратных скобках на свои данные. Перед отправкой удалите персональную и конфиденциальную информацию. Все промпты доступны всем — фильтр лишь помогает найти нужное.</p>
       ${showChips ? `<div class="lib-filter">
         <button class="lib-chip ${filter === "all" ? "is-active" : ""}" type="button" data-lib-filter="all">Все</button>
+        <button class="lib-chip ${filter === "saved" ? "is-active" : ""}" type="button" data-lib-filter="saved">Моя подборка (${savedIds.size})</button>
         ${present.map((id) => `<button class="lib-chip ${filter === id ? "is-active" : ""} ${id === myDept ? "is-mine" : ""}" type="button" data-lib-filter="${id}">${escapeHtml(chipLabel(id))}${id === myDept ? " ★" : ""}</button>`).join("")}
       </div>` : ""}
     </section>
@@ -5342,6 +5541,7 @@ async function renderLibrary(options = {}) {
   });
 
   bindPromptCopy(contentView);
+  bindPromptCollection(contentView);
 
   renderNav();
   renderObjectives();
@@ -5589,6 +5789,7 @@ function renderMistakeInsights(finalSet) {
     return acc;
   }, {});
   const totalWrong = Object.values(wrongCategories).reduce((sum, count) => sum + count, 0);
+  const personalInsights = window.CourseExperienceCore.buildErrorInsights(finalSet, state.finalAnswers);
   const cards = [
     {
       title: "Промпт без контекста",
@@ -5626,6 +5827,13 @@ function renderMistakeInsights(finalSet) {
         </div>
         <span class="tag">${totalWrong ? `${totalWrong} зон сигнала` : "критичных сигналов нет"}</span>
       </div>
+      ${personalInsights.length ? `<div class="personal-insight-grid">
+        ${personalInsights.map((item) => `<article class="personal-insight-card">
+          <span>${item.count} ${item.count === 1 ? "вопрос" : "вопроса"}</span>
+          <h4>${item.title}</h4>
+          <p>${item.action}</p>
+        </article>`).join("")}
+      </div>` : `<p class="field-status">По итоговому тесту нет выраженных слабых зон. Закрепите навык на одной рабочей задаче.</p>`}
       <div class="mistake-grid">
         ${cards.map((card, index) => `
           <article class="mistake-card ${card.active ? "is-active" : "is-ok"}" style="--step:${index}">
