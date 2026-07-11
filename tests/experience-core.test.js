@@ -71,3 +71,8 @@ test("derives catalog states from actual course progress", () => {
   assert.equal(core.getCatalogState({ locked: true, active: false, submitted: false }), "locked");
   assert.equal(core.getCatalogState({ locked: false, active: true, submitted: true, department: true }), "department");
 });
+
+test("defines work-case data before the course initializes", () => {
+  const script = fs.readFileSync(new URL("../script.js", import.meta.url), "utf8");
+  assert.ok(script.indexOf("const WORK_CASES") < script.lastIndexOf("initializeCourse();"));
+});

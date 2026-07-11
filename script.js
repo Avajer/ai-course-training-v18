@@ -84,7 +84,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v57";
+const COURSE_BUILD = "v58";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3372,8 +3372,6 @@ window.courseExperienceHost = {
   }
 };
 
-initializeCourse();
-
 function initializeCourse() {
   initTheme();
   bindV2Delegation();
@@ -4753,6 +4751,8 @@ function bindWeakAnswerDrill() {
     result.hidden = false;
   });
 }
+
+initializeCourse();
 
 function renderModuleVideo(module) {
   const video = moduleVideos[module.id];
