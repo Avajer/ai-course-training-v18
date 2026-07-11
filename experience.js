@@ -10,6 +10,32 @@
     return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   }
 
+  function brandLogoMarkup(compact) {
+    return `
+      <div class="brand-logo ${compact ? "brand-logo--compact" : "brand-logo--full"}" role="img" aria-label="ИИ-практикум, курс для работников">
+        <span class="brand-logo__system" aria-hidden="true">
+          <svg viewBox="0 0 140 140" class="brand-logo__orbits">
+            <ellipse class="brand-logo__orbit brand-logo__orbit--one" cx="70" cy="70" rx="61" ry="25" transform="rotate(-18 70 70)" />
+            <ellipse class="brand-logo__orbit brand-logo__orbit--two" cx="70" cy="70" rx="52" ry="20" transform="rotate(32 70 70)" />
+            <ellipse class="brand-logo__orbit brand-logo__orbit--three" cx="70" cy="70" rx="42" ry="16" transform="rotate(-58 70 70)" />
+            <ellipse class="brand-logo__orbit brand-logo__orbit--gold" cx="70" cy="70" rx="66" ry="28" transform="rotate(12 70 70)" />
+          </svg>
+          <i class="brand-logo__spark brand-logo__spark--one"></i><i class="brand-logo__spark brand-logo__spark--two"></i><i class="brand-logo__spark brand-logo__spark--three"></i>
+          <i class="brand-logo__planet brand-logo__planet--one"></i><i class="brand-logo__planet brand-logo__planet--two"></i><i class="brand-logo__planet brand-logo__planet--three"></i>
+          <span class="brand-logo__corona"></span>
+          <span class="brand-logo__core">+</span>
+        </span>
+        <span class="brand-logo__copy"><strong>ИИ-практикум</strong><small>курс для работников</small></span>
+      </div>`;
+  }
+
+  function renderBrandLogos() {
+    const compact = $("#brandLogoCompact");
+    const hero = $("#brandLogoHero");
+    if (compact) compact.innerHTML = brandLogoMarkup(true);
+    if (hero) hero.innerHTML = brandLogoMarkup(false);
+  }
+
   function renderHeroCycle() {
     const target = $("#heroCycle");
     if (!target) return;
@@ -66,6 +92,16 @@
     button?.setAttribute("aria-expanded", String(Boolean(expanded)));
     const marker = button?.querySelector("span:last-child");
     if (marker) marker.textContent = expanded ? "⌃" : "⌄";
+  }
+
+  function enhanceCatalog() {
+    const nav = $("#moduleNav");
+    if (!nav || nav.querySelector(".catalog-thread")) return;
+    const thread = document.createElement("span");
+    thread.className = "catalog-thread";
+    thread.setAttribute("aria-hidden", "true");
+    thread.innerHTML = "<i></i>";
+    nav.prepend(thread);
   }
 
   function renderLessonProgress() {
@@ -151,6 +187,63 @@
     window.setTimeout(() => node.remove(), 2200);
   }
 
+  function promptBookMarkup() {
+    return `
+      <div class="prompt-book__scene" tabindex="0" aria-label="Открывающаяся книга библиотеки промптов">
+        <div class="prompt-book__floor" aria-hidden="true"></div>
+        <div class="prompt-book__glyphs" aria-hidden="true"><span>Σ</span><span>λ</span><span>{ }</span><span>★</span><span>∞</span><span>→</span></div>
+        <div class="prompt-book__volume" aria-hidden="true">
+          <div class="prompt-book__back"><i></i><i></i><i></i></div>
+          <div class="prompt-book__spine"></div>
+          <div class="prompt-book__cards">
+            <span class="prompt-book__card" style="--tx:-132px;--ty:-88px;--rot:-18deg"><i></i><i></i><i></i></span>
+            <span class="prompt-book__card" style="--tx:-68px;--ty:-122px;--rot:-8deg"><i></i><i></i><i></i></span>
+            <span class="prompt-book__card prompt-book__card--gold" style="--tx:0px;--ty:-152px;--rot:0deg"><b>★</b><i></i><i></i><i></i></span>
+            <span class="prompt-book__card" style="--tx:68px;--ty:-122px;--rot:8deg"><i></i><i></i><i></i></span>
+            <span class="prompt-book__card" style="--tx:132px;--ty:-88px;--rot:18deg"><i></i><i></i><i></i></span>
+          </div>
+          <div class="prompt-book__cover"><span class="prompt-book__cover-mark">★</span><span class="prompt-book__cover-line"></span><span class="prompt-book__cover-line"></span></div>
+        </div>
+      </div>
+      <div class="prompt-book__copy">
+        <p class="eyebrow">Рабочая библиотека</p>
+        <h2>Шаблоны, которые становятся рабочими инструментами</h2>
+        <p>Откройте книгу, выберите задачу и адаптируйте промпт под свой контекст.</p>
+        <button type="button" class="primary-button" data-open-prompt-grid>Открыть подборку</button>
+      </div>`;
+  }
+
+  function enhancePromptLibrary() {
+    const target = $("#promptLibraryBook");
+    if (!target || target.dataset.experienceReady === "true") return;
+    target.dataset.experienceReady = "true";
+    target.innerHTML = promptBookMarkup();
+    const scene = $(".prompt-book__scene", target);
+    const preference = host.getExperienceState();
+    const open = () => target.classList.add("is-open");
+    if (preference.libraryBookSeen || reducedMotion()) {
+      target.classList.add("is-open", "is-seen");
+    } else if ("IntersectionObserver" in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        open();
+        const next = host.getExperienceState();
+        next.libraryBookSeen = true;
+        host.updateExperience(next);
+        observer.disconnect();
+      }, { threshold: 0.42 });
+      observer.observe(target);
+    } else {
+      open();
+    }
+    scene?.addEventListener("mouseenter", open);
+    scene?.addEventListener("focus", open);
+    scene?.addEventListener("click", open);
+    $("[data-open-prompt-grid]", target)?.addEventListener("click", () => {
+      $(".prompt-grid")?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+    });
+  }
+
   function observeContent() {
     const target = $("#contentView");
     if (!target) return;
@@ -164,13 +257,16 @@
   }
 
   function init() {
+    renderBrandLogos();
     renderHeroCycle();
     enhanceSidebar();
+    enhanceCatalog();
     enhanceLesson();
+    enhancePromptLibrary();
     renderLessonProgress();
     observeContent();
   }
 
-  window.CourseExperience = { init, renderHeroCycle, enhanceSidebar, enhanceLesson, renderLessonProgress, announce };
+  window.CourseExperience = { init, renderBrandLogos, renderHeroCycle, enhanceSidebar, enhanceCatalog, enhanceLesson, enhancePromptLibrary, renderLessonProgress, announce };
   init();
 })();

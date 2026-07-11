@@ -21,14 +21,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Geologica:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=56">
-  <link rel="stylesheet" href="features.css?v=56">
-  <link rel="stylesheet" href="experience.css?v=56">
+  <link rel="stylesheet" href="styles.css?v=57">
+  <link rel="stylesheet" href="features.css?v=57">
+  <link rel="stylesheet" href="experience.css?v=57">
 </head>
 <body class="tpl-course-module">
   <div class="deck app-shell">
     <aside class="sidebar objective-rail" aria-label="Цели и навигация курса">
-      <div class="brand">ИИ-практикум</div>
+      <div id="brandLogoCompact" class="brand-logo-host brand-logo-host--compact"></div>
       <section class="experience-panel" data-experience-panel="objectives">
         <button class="experience-panel__toggle" type="button" aria-expanded="true">
           <span>Цели курса</span><span aria-hidden="true">⌃</span>
@@ -83,6 +83,7 @@
         <div class="hero-glow hero-glow-1" aria-hidden="true"></div>
         <div class="hero-glow hero-glow-2" aria-hidden="true"></div>
         <div class="hero-grid-lines" aria-hidden="true"></div>
+        <div id="brandLogoHero" class="brand-logo-host brand-logo-host--hero"></div>
         <p class="kicker">Начальный уровень · для работников · Агван</p>
         <h1 class="h1 mt-s">ИИ для работы:<br><em>от первого запроса до проверенного результата</em></h1>
         <p class="lede mt-l">Практический курс для работников: как ставить запрос, проверять ответ и безопасно использовать ИИ в реальных задачах.</p>
@@ -121,15 +122,15 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="experience-core.js?v=56"></script>
-  <script src="script.js?v=56"></script>
-  <script src="experience.js?v=56"></script>
-  <script src="features.js?v=56"></script>
+  <script src="experience-core.js?v=57"></script>
+  <script src="script.js?v=57"></script>
+  <script src="experience.js?v=57"></script>
+  <script src="features.js?v=57"></script>
   <script>
     /* PWA: офлайн-режим и установка как приложение (только на https / localhost) */
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        var reloadedKey = "aiCourseSwReloadedV56";
+        var reloadedKey = "aiCourseSwReloadedV57";
         var onControllerChange = function () {
           if (sessionStorage.getItem(reloadedKey)) return;
           sessionStorage.setItem(reloadedKey, "1");
