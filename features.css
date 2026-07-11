@@ -102,7 +102,7 @@ body.nav-open .feat-scrim { opacity: 1; visibility: visible; }
     top: 0;
     left: 0;
     z-index: 1045;
-    width: min(86vw, 330px);
+    width: min(88vw, 390px);
     max-height: 100dvh;
     height: 100dvh;
     border-radius: 0 22px 22px 0;

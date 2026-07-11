@@ -286,11 +286,13 @@ li::marker { color: var(--accent); }
 
 .deck {
   display: grid;
-  grid-template-columns: 304px minmax(0, 1fr);
-  gap: 2rem;
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 1.6rem;
+  grid-template-columns: 390px minmax(0, 1fr);
+  gap: clamp(1.4rem, 1.8vw, 2.4rem);
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  margin: 0;
+  padding: clamp(1rem, 1.55vw, 2rem) clamp(1rem, 1.85vw, 2.5rem);
 }
 
 .main {
@@ -2542,7 +2544,7 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
 /* ---------- Адаптив ---------- */
 
 @media (max-width: 1120px) {
-  .deck { grid-template-columns: 1fr; }
+  .deck { grid-template-columns: 1fr; min-height: auto; }
 
   .sidebar {
     position: static;
