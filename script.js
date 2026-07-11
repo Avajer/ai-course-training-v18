@@ -84,7 +84,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v56";
+const COURSE_BUILD = "v57";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3589,10 +3589,12 @@ function renderNav() {
   const locked = !isAuthenticated();
   let html = modules.map((module, index) => {
     const done = Boolean(state.modules[module.id]?.submitted);
+    const active = currentView === "module" && currentModuleIndex === index;
+    const catalogState = window.CourseExperienceCore.getCatalogState({ locked, active, submitted: done });
     const visibleTitle = locked ? `Закрытый блок ${index + 1}` : module.title;
     const ariaLabel = locked ? `Доступ после регистрации. Закрытый блок ${index + 1}` : module.title;
     return `
-      <button class="module-button ${locked ? "is-locked" : ""} ${currentView === "module" && currentModuleIndex === index ? "is-active" : ""}" type="button" data-module="${index}" aria-label="${escapeHtml(ariaLabel)}">
+      <button class="module-button ${locked ? "is-locked" : ""} ${active ? "is-active" : ""}" type="button" data-module="${index}" data-catalog-state="${catalogState}" aria-label="${escapeHtml(ariaLabel)}">
         <span class="module-index">${index + 1}</span>
         <span class="module-title">${escapeHtml(visibleTitle)}</span>
       <span class="module-state ${done ? "is-done" : ""}">${locked ? "закрыто" : done ? "✓" : ""}</span>
@@ -3604,7 +3606,7 @@ function renderNav() {
   if (hasDepartmentBlock()) {
     const deptName = DEPARTMENTS.find((d) => d.id === userDepartmentId())?.name || "Мой департамент";
     html += `
-      <button class="module-button dept-nav ${currentView === "department" ? "is-active" : ""}" type="button" data-dept-block="1" aria-label="${escapeHtml(deptName)}">
+      <button class="module-button dept-nav ${currentView === "department" ? "is-active" : ""}" type="button" data-dept-block="1" data-catalog-state="department" aria-label="${escapeHtml(deptName)}">
         <span class="module-index">20</span>
         <span class="module-title">${escapeHtml(deptName)}</span>
         <span class="module-state"></span>
@@ -3624,6 +3626,7 @@ function renderNav() {
     if (!(await requireActiveParticipant())) return;
     renderDepartmentBlock();
   });
+  window.CourseExperience?.enhanceCatalog();
 }
 
 function renderObjectives() {
@@ -5531,6 +5534,7 @@ async function renderLibrary(options = {}) {
         ${present.map((id) => `<button class="lib-chip ${filter === id ? "is-active" : ""} ${id === myDept ? "is-mine" : ""}" type="button" data-lib-filter="${id}">${escapeHtml(chipLabel(id))}${id === myDept ? " ★" : ""}</button>`).join("")}
       </div>` : ""}
     </section>
+    <section id="promptLibraryBook" class="prompt-library-book" aria-label="Вход в библиотеку промптов"></section>
     <section class="prompt-grid">
       ${visible.map(({ p, i }) => promptCardHtml(p, i, chipLabel)).join("")}
     </section>
@@ -5542,6 +5546,7 @@ async function renderLibrary(options = {}) {
 
   bindPromptCopy(contentView);
   bindPromptCollection(contentView);
+  window.CourseExperience?.enhancePromptLibrary();
 
   renderNav();
   renderObjectives();

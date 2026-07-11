@@ -21,7 +21,8 @@
       roadmapCollapsed: true,
       lessonSections: {},
       savedPrompts: [],
-      promptNotes: {}
+      promptNotes: {},
+      libraryBookSeen: false
     };
   }
 
@@ -33,7 +34,8 @@
       panels: { ...PANEL_DEFAULTS, ...(source.panels || {}) },
       lessonSections: { ...(source.lessonSections || {}) },
       savedPrompts: Array.isArray(source.savedPrompts) ? source.savedPrompts : [],
-      promptNotes: { ...(source.promptNotes || {}) }
+      promptNotes: { ...(source.promptNotes || {}) },
+      libraryBookSeen: source.libraryBookSeen === true
     };
   }
 
@@ -47,6 +49,13 @@
     const next = normalizeExperience(experience);
     next.panels[panel] = !next.panels[panel];
     return next;
+  }
+
+  function getCatalogState({ locked = false, active = false, submitted = false, department = false } = {}) {
+    if (locked) return "locked";
+    if (department) return "department";
+    if (active) return "active";
+    return submitted ? "done" : "future";
   }
 
   function findNextAction(modules, progress) {
@@ -106,6 +115,7 @@
     normalizeExperience,
     withExperience,
     toggleExperiencePanel,
+    getCatalogState,
     findNextAction,
     classifyTask,
     buildErrorInsights,

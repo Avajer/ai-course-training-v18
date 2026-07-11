@@ -15,7 +15,8 @@ test("normalizes a missing experience state without sharing preferences", () => 
     roadmapCollapsed: true,
     lessonSections: {},
     savedPrompts: [],
-    promptNotes: {}
+    promptNotes: {},
+    libraryBookSeen: false
   });
 });
 
@@ -62,4 +63,11 @@ test("removes a prompt from the collection on the second action", () => {
   const saved = core.toggleSavedPrompt(core.blankExperience(), "audit-plan");
   const removed = core.toggleSavedPrompt(saved, "audit-plan");
   assert.deepEqual(JSON.parse(JSON.stringify(removed.savedPrompts)), []);
+});
+
+test("derives catalog states from actual course progress", () => {
+  assert.equal(core.getCatalogState({ locked: false, active: true, submitted: false }), "active");
+  assert.equal(core.getCatalogState({ locked: false, active: false, submitted: true }), "done");
+  assert.equal(core.getCatalogState({ locked: true, active: false, submitted: false }), "locked");
+  assert.equal(core.getCatalogState({ locked: false, active: true, submitted: true, department: true }), "department");
 });
