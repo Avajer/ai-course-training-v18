@@ -3,6 +3,19 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 
+test("визуализации книги и каталога используют исходные классы Claude Design", () => {
+  const experience = fs.readFileSync(new URL("../experience.js", import.meta.url), "utf8");
+  const course = fs.readFileSync(new URL("../script.js", import.meta.url), "utf8");
+  const styles = fs.readFileSync(new URL("../experience.css", import.meta.url), "utf8");
+
+  assert.match(experience, /class="book-scene"/);
+  assert.match(experience, /class="book-cover"/);
+  assert.match(course, /nav-item nav-item--/);
+  assert.match(course, /class="nav-thread"/);
+  assert.match(styles, /@keyframes book-cover/);
+  assert.match(styles, /@keyframes nav-flow/);
+});
+
 const source = fs.readFileSync(new URL("../experience-core.js", import.meta.url), "utf8");
 const sandbox = { window: {} };
 sandbox.globalThis = sandbox.window;

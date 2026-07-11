@@ -84,7 +84,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v58";
+const COURSE_BUILD = "v59";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3592,10 +3592,10 @@ function renderNav() {
     const visibleTitle = locked ? `Закрытый блок ${index + 1}` : module.title;
     const ariaLabel = locked ? `Доступ после регистрации. Закрытый блок ${index + 1}` : module.title;
     return `
-      <button class="module-button ${locked ? "is-locked" : ""} ${active ? "is-active" : ""}" type="button" data-module="${index}" data-catalog-state="${catalogState}" aria-label="${escapeHtml(ariaLabel)}">
-        <span class="module-index">${index + 1}</span>
-        <span class="module-title">${escapeHtml(visibleTitle)}</span>
-      <span class="module-state ${done ? "is-done" : ""}">${locked ? "закрыто" : done ? "✓" : ""}</span>
+      <button class="module-button nav-item nav-item--${catalogState}" type="button" data-module="${index}" data-catalog-state="${catalogState}" aria-label="${escapeHtml(ariaLabel)}">
+        <span class="nav-node"></span>
+        <span class="nav-num">${index + 1}</span>
+        <span class="nav-label">${escapeHtml(visibleTitle)}</span>
       </button>
     `;
   }).join("");
@@ -3604,15 +3604,23 @@ function renderNav() {
   if (hasDepartmentBlock()) {
     const deptName = DEPARTMENTS.find((d) => d.id === userDepartmentId())?.name || "Мой департамент";
     html += `
-      <button class="module-button dept-nav ${currentView === "department" ? "is-active" : ""}" type="button" data-dept-block="1" data-catalog-state="department" aria-label="${escapeHtml(deptName)}">
-        <span class="module-index">20</span>
-        <span class="module-title">${escapeHtml(deptName)}</span>
-        <span class="module-state"></span>
+      <button class="module-button nav-item nav-item--dept ${currentView === "department" ? "nav-item--active" : ""}" type="button" data-dept-block="1" data-catalog-state="department" aria-label="${escapeHtml(deptName)}">
+        <span class="nav-node"></span>
+        <span class="nav-num">${modules.length + 1}</span>
+        <span class="nav-label">${escapeHtml(deptName)}</span>
+        <span class="nav-dept-tag">департамент</span>
       </button>
     `;
   }
 
-  moduleNav.innerHTML = html;
+  moduleNav.className = "module-nav nav-panel";
+  moduleNav.innerHTML = `
+    <div class="nav-head">Блоки курса</div>
+    <div class="nav-list">
+      <div class="nav-thread"><div class="nav-pulse"></div></div>
+      ${html}
+    </div>
+  `;
 
   moduleNav.querySelectorAll("[data-module]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -3624,7 +3632,6 @@ function renderNav() {
     if (!(await requireActiveParticipant())) return;
     renderDepartmentBlock();
   });
-  window.CourseExperience?.enhanceCatalog();
 }
 
 function renderObjectives() {

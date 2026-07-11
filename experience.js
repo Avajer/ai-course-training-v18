@@ -94,16 +94,6 @@
     if (marker) marker.textContent = expanded ? "⌃" : "⌄";
   }
 
-  function enhanceCatalog() {
-    const nav = $("#moduleNav");
-    if (!nav || nav.querySelector(".catalog-thread")) return;
-    const thread = document.createElement("span");
-    thread.className = "catalog-thread";
-    thread.setAttribute("aria-hidden", "true");
-    thread.innerHTML = "<i></i>";
-    nav.prepend(thread);
-  }
-
   function renderLessonProgress() {
     const target = $("#lessonProgressBar");
     if (!target) return;
@@ -189,27 +179,33 @@
 
   function promptBookMarkup() {
     return `
-      <div class="prompt-book__scene" tabindex="0" aria-label="Открывающаяся книга библиотеки промптов">
-        <div class="prompt-book__floor" aria-hidden="true"></div>
-        <div class="prompt-book__glyphs" aria-hidden="true"><span>Σ</span><span>λ</span><span>{ }</span><span>★</span><span>∞</span><span>→</span></div>
-        <div class="prompt-book__volume" aria-hidden="true">
-          <div class="prompt-book__back"><i></i><i></i><i></i></div>
-          <div class="prompt-book__spine"></div>
-          <div class="prompt-book__cards">
-            <span class="prompt-book__card" style="--tx:-132px;--ty:-88px;--rot:-18deg"><i></i><i></i><i></i></span>
-            <span class="prompt-book__card" style="--tx:-68px;--ty:-122px;--rot:-8deg"><i></i><i></i><i></i></span>
-            <span class="prompt-book__card prompt-book__card--gold" style="--tx:0px;--ty:-152px;--rot:0deg"><b>★</b><i></i><i></i><i></i></span>
-            <span class="prompt-book__card" style="--tx:68px;--ty:-122px;--rot:8deg"><i></i><i></i><i></i></span>
-            <span class="prompt-book__card" style="--tx:132px;--ty:-88px;--rot:18deg"><i></i><i></i><i></i></span>
+      <div class="book-scene" tabindex="0" aria-label="Открывающаяся книга библиотеки промптов">
+        <div class="book-floor"></div>
+        <div class="book-3d">
+          <div class="book-back"><div class="book-pages"></div></div>
+          <div class="book-spine"></div>
+          <div class="book-cards">
+            <div class="book-card" style="--tx:-140px; --ty:-96px; --rot:-19deg;"><i></i><i></i><i></i><i></i></div>
+            <div class="book-card" style="--tx:-74px; --ty:-128px; --rot:-9deg;"><i></i><i></i><i></i><i></i></div>
+            <div class="book-card book-card--gold" style="--tx:0px; --ty:-162px; --rot:0deg;">
+              <div class="book-card-star">★</div><i></i><i></i><i></i><i></i>
+            </div>
+            <div class="book-card" style="--tx:74px; --ty:-128px; --rot:9deg;"><i></i><i></i><i></i><i></i></div>
+            <div class="book-card" style="--tx:140px; --ty:-96px; --rot:19deg;"><i></i><i></i><i></i><i></i></div>
           </div>
-          <div class="prompt-book__cover"><span class="prompt-book__cover-mark">★</span><span class="prompt-book__cover-line"></span><span class="prompt-book__cover-line"></span></div>
+          <div class="book-cover">
+            <div class="book-cover-mono"></div>
+            <div class="book-cover-lines"><i></i><i></i></div>
+          </div>
         </div>
-      </div>
-      <div class="prompt-book__copy">
-        <p class="eyebrow">Рабочая библиотека</p>
-        <h2>Шаблоны, которые становятся рабочими инструментами</h2>
-        <p>Откройте книгу, выберите задачу и адаптируйте промпт под свой контекст.</p>
-        <button type="button" class="primary-button" data-open-prompt-grid>Открыть подборку</button>
+        <div class="book-glyphs">
+          <span class="book-glyph">Σ</span>
+          <span class="book-glyph">λ</span>
+          <span class="book-glyph">{ }</span>
+          <span class="book-glyph">★</span>
+          <span class="book-glyph">∞</span>
+          <span class="book-glyph">→</span>
+        </div>
       </div>`;
   }
 
@@ -218,28 +214,7 @@
     if (!target || target.dataset.experienceReady === "true") return;
     target.dataset.experienceReady = "true";
     target.innerHTML = promptBookMarkup();
-    const scene = $(".prompt-book__scene", target);
-    const preference = host.getExperienceState();
-    const open = () => target.classList.add("is-open");
-    if (preference.libraryBookSeen || reducedMotion()) {
-      target.classList.add("is-open", "is-seen");
-    } else if ("IntersectionObserver" in window) {
-      const observer = new IntersectionObserver((entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        open();
-        const next = host.getExperienceState();
-        next.libraryBookSeen = true;
-        host.updateExperience(next);
-        observer.disconnect();
-      }, { threshold: 0.42 });
-      observer.observe(target);
-    } else {
-      open();
-    }
-    scene?.addEventListener("mouseenter", open);
-    scene?.addEventListener("focus", open);
-    scene?.addEventListener("click", open);
-    $("[data-open-prompt-grid]", target)?.addEventListener("click", () => {
+    $(".book-scene", target)?.addEventListener("click", () => {
       $(".prompt-grid")?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
     });
   }
@@ -260,13 +235,12 @@
     renderBrandLogos();
     renderHeroCycle();
     enhanceSidebar();
-    enhanceCatalog();
     enhanceLesson();
     enhancePromptLibrary();
     renderLessonProgress();
     observeContent();
   }
 
-  window.CourseExperience = { init, renderBrandLogos, renderHeroCycle, enhanceSidebar, enhanceCatalog, enhanceLesson, enhancePromptLibrary, renderLessonProgress, announce };
+  window.CourseExperience = { init, renderBrandLogos, renderHeroCycle, enhanceSidebar, enhanceLesson, enhancePromptLibrary, renderLessonProgress, announce };
   init();
 })();
