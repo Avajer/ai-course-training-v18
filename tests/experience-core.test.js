@@ -16,6 +16,13 @@ test("визуализации книги и каталога использую
   assert.match(styles, /@keyframes nav-flow/);
 });
 
+test("рабочий цикл остается на стартовом экране и не возвращается при переходе по блокам", () => {
+  const course = fs.readFileSync(new URL("../script.js", import.meta.url), "utf8");
+
+  assert.match(course, /setHeroVisibility\(Boolean\(options\.showHero\)\)/);
+  assert.match(course, /renderModule\(0, \{ showHero: true \}\)/);
+});
+
 const source = fs.readFileSync(new URL("../experience-core.js", import.meta.url), "utf8");
 const sandbox = { window: {} };
 sandbox.globalThis = sandbox.window;

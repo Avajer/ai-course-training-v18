@@ -84,7 +84,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v60";
+const COURSE_BUILD = "v61";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3339,6 +3339,7 @@ let statusMonitorStarted = false;
 let statusCheckInFlight = null;
 
 const contentView = document.getElementById("contentView");
+const courseHero = document.getElementById("courseHero");
 const moduleNav = document.getElementById("moduleNav");
 const objectiveList = document.getElementById("objectiveList");
 const roadmapView = document.getElementById("roadmapView");
@@ -3349,6 +3350,10 @@ const progressFill = document.getElementById("progressFill");
 const toast = document.getElementById("toast");
 const accountStatus = document.getElementById("accountStatus");
 let revealObserver = null;
+
+function setHeroVisibility(visible) {
+  if (courseHero) courseHero.hidden = !visible;
+}
 
 ["libraryButton", "topLibraryButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderLibrary()));
 ["finalButton", "topFinalButton"].forEach((id) => document.getElementById(id)?.addEventListener("click", () => renderFinalTest()));
@@ -3383,7 +3388,7 @@ function initializeCourse() {
   renderAccountStatus();
   updateDepartmentNav();
   if (isAuthenticated()) {
-    renderModule(0);
+    renderModule(0, { showHero: true });
     verifyParticipantAccess({ silent: true });
     startAccessMonitor();
   } else {
@@ -3557,6 +3562,7 @@ function lockParticipant(message) {
 function renderAuthRequired() {
   const accessDisabled = /отключ|blocked|deleted|заблок|удален|удалён/i.test(state.authStatus || "");
   currentView = "locked";
+  setHeroVisibility(true);
   contentView.innerHTML = `
     <section class="section-band auth-required">
       <p class="eyebrow">${accessDisabled ? "Доступ отключен" : "Доступ к курсу"}</p>
@@ -4317,6 +4323,7 @@ async function renderDepartmentBlock(options = {}) {
   const block = getDepartmentBlock();
   if (!block) { showToast("Тематический блок для вашего департамента ещё готовится."); return; }
   currentView = "department";
+  setHeroVisibility(false);
   const moduleId = block.id;
   const deptId = userDepartmentId();
   // Свежее открытие блока показывает свой департамент; смена фильтра — выбранный.
@@ -4438,6 +4445,7 @@ function renderModule(index, options = {}) {
     return;
   }
   const scrollMode = options.scrollMode || "top";
+  setHeroVisibility(Boolean(options.showHero));
   currentView = "module";
   currentModuleIndex = index;
   const module = modules[index];
@@ -4587,7 +4595,11 @@ function renderModule(index, options = {}) {
   if (scrollMode === "result") {
     document.getElementById("moduleResult")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (scrollMode === "top") {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (options.showHero) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      contentView.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
   prepareAnimations(contentView);
 }
@@ -5275,6 +5287,7 @@ function bindV2Delegation() {
 async function renderGlossary() {
   if (!(await requireActiveParticipant())) return;
   currentView = "glossary";
+  setHeroVisibility(false);
   const categories = [...new Set(glossaryTerms.map((item) => item.cat))];
 
   contentView.innerHTML = `
@@ -5512,6 +5525,7 @@ function bindPromptCollection(root) {
 async function renderLibrary(options = {}) {
   if (!(await requireActiveParticipant())) return;
   currentView = "library";
+  setHeroVisibility(false);
   const myDept = departmentIdFor(state.participant?.department);
   const order = ["universal", ...DEPARTMENTS.map((d) => d.id)];
   const present = [];
@@ -5622,6 +5636,7 @@ async function renderFinalTest(options = {}) {
   if (!(await requireActiveParticipant())) return;
   const scrollMode = options.scrollMode || "top";
   currentView = "final";
+  setHeroVisibility(false);
   const finalSubmitted = state.finalSubmitted;
   const finalSet = getFinalSet();
 

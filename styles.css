@@ -286,7 +286,7 @@ li::marker { color: var(--accent); }
 
 .deck {
   display: grid;
-  grid-template-columns: 390px minmax(0, 1fr);
+  grid-template-columns: 460px minmax(0, 1fr);
   gap: clamp(1.4rem, 1.8vw, 2.4rem);
   width: 100%;
   max-width: none;
