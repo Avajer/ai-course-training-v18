@@ -683,6 +683,10 @@ li::marker { color: var(--accent); }
   gap: 1rem;
 }
 
+/* Авторский display:grid имеет приоритет над браузерным [hidden], поэтому
+   задаем скрытие явно: в свернутом виде остается только шапка результатов. */
+.results-details[hidden] { display: none; }
+
 .results-empty p:last-child {
   max-width: 60ch;
   color: var(--muted);

@@ -84,7 +84,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v63";
+const COURSE_BUILD = "v64";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3983,8 +3983,8 @@ function renderResultsOverview() {
           </button>
         </div>
       </div>
-      ${syncIssue ? `<p class="submit-hint results-warning">Внимание: ${escapeHtml(syncIssueText)}.</p>` : ""}
       <div class="results-details" ${resultsCollapsed ? "hidden" : ""}>
+        ${syncIssue ? `<p class="submit-hint results-warning">Внимание: ${escapeHtml(syncIssueText)}.</p>` : ""}
         <div class="results-cards">
           <article class="results-card">
             <strong>${completedModules.length}/${modules.length}</strong>
