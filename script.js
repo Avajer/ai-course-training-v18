@@ -84,7 +84,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v61";
+const COURSE_BUILD = "v63";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3689,13 +3689,20 @@ function renderAccountStatus() {
   if (!accountStatus) return;
   const loggedIn = isAuthenticated();
   accountStatus.innerHTML = loggedIn ? `
-    <button class="account-chip is-authenticated" type="button" id="accountChip" aria-label="Учетная запись">
-      <span class="account-avatar">${escapeHtml((state.participant.name || "У").trim().slice(0, 1).toUpperCase())}</span>
-      <span class="account-copy">
-        <strong>${escapeHtml(state.participant.name)}</strong>
-        <small>${escapeHtml(state.participant.department || "Подразделение не указано")}</small>
-      </span>
-    </button>
+    <div class="account-menu">
+      <button class="account-chip is-authenticated" type="button" id="accountChip" aria-label="Учетная запись" aria-expanded="false" aria-controls="accountMenuPanel">
+        <span class="account-avatar">${escapeHtml((state.participant.name || "У").trim().slice(0, 1).toUpperCase())}</span>
+        <span class="account-copy">
+          <small>Вы вошли в курс</small>
+          <strong>${escapeHtml(state.participant.name)}</strong>
+        </span>
+      </button>
+      <div class="account-popover" id="accountMenuPanel" hidden>
+        <strong>${escapeHtml(state.participant.department || "Подразделение не указано")}</strong>
+        <span>Статус: ${escapeHtml(state.authStatus || "вход выполнен")}</span>
+        <button id="logoutButtonTop" class="ghost-button" type="button">Выйти</button>
+      </div>
+    </div>
   ` : `
     <button class="account-chip" type="button" id="accountChip" aria-label="Перейти к авторизации">
       <span class="account-avatar">?</span>
@@ -3705,13 +3712,25 @@ function renderAccountStatus() {
       </span>
     </button>
   `;
-  document.getElementById("accountChip")?.addEventListener("click", () => {
-    participantView.scrollIntoView({ behavior: "smooth", block: "center" });
+  const accountChip = document.getElementById("accountChip");
+  const accountMenuPanel = document.getElementById("accountMenuPanel");
+  accountChip?.addEventListener("click", () => {
+    const nextOpen = accountMenuPanel?.hidden !== false;
+    if (accountMenuPanel) accountMenuPanel.hidden = !nextOpen;
+    accountChip.setAttribute("aria-expanded", String(nextOpen));
   });
+  document.getElementById("logoutButtonTop")?.addEventListener("click", logoutParticipant);
+  if (!loggedIn) {
+    accountChip?.addEventListener("click", () => {
+      participantView.hidden = false;
+      participantView.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
   updateDepartmentNav();
 }
 
 function renderPasswordResetForm() {
+  participantView.hidden = false;
   const name = state.participant?.name || "";
   participantView.innerHTML = `
     <div class="participant-copy">
@@ -3800,23 +3819,21 @@ async function completePasswordReset() {
 function renderParticipantForm() {
   if (state.passwordResetMode) { renderPasswordResetForm(); return; }
   const isAuthenticated = Boolean(state.participant?.authenticated);
+  if (isAuthenticated) {
+    participantView.hidden = true;
+    participantView.innerHTML = "";
+    renderAccountStatus();
+    return;
+  }
+  participantView.hidden = false;
   participantView.innerHTML = `
     <div class="participant-copy">
       <p class="kicker">Авторизация участника</p>
-      <h2 class="h2">${isAuthenticated ? "Вы вошли в курс" : "Вход и регистрация"}</h2>
-      <p>${isAuthenticated
-        ? `Участник: ${escapeHtml(state.participant.name)}. Результаты будут привязаны к этой учетной записи.`
-        : "Сначала зарегистрируйтесь по ФИО, подразделению, коду доступа и паролю. Если вы уже зарегистрированы, переключитесь на вход."}</p>
+      <h2 class="h2">Вход и регистрация</h2>
+      <p>Сначала зарегистрируйтесь по ФИО, подразделению, коду доступа и паролю. Если вы уже зарегистрированы, переключитесь на вход.</p>
     </div>
     <div class="participant-fields auth-fields">
-      ${isAuthenticated ? `
-        <div class="auth-badge">
-          <strong>${escapeHtml(state.participant.name)}</strong>
-          <span>${escapeHtml(state.participant.department || "Подразделение не указано")}</span>
-          <small>Статус: ${escapeHtml(state.authStatus || "вход выполнен")}</small>
-        </div>
-        <button id="logoutButton" class="secondary-button" type="button">Выйти</button>
-      ` : `
+      ${`
         <div class="auth-tabs" role="tablist" aria-label="Режим авторизации">
           <button class="auth-tab is-active" type="button" data-auth-tab="login">Вход</button>
           <button class="auth-tab" type="button" data-auth-tab="register">Регистрация</button>
@@ -3854,11 +3871,6 @@ function renderParticipantForm() {
     </div>
   `;
   renderAccountStatus();
-
-  if (isAuthenticated) {
-    document.getElementById("logoutButton")?.addEventListener("click", logoutParticipant);
-    return;
-  }
 
   let authMode = state.participant?.authMode || "register";
   const updateDeptOther = () => {
@@ -3955,69 +3967,86 @@ function renderResultsOverview() {
   const syncIssueText = /старой версии/i.test(String(syncIssue || ""))
     ? "Google Apps Script опубликован в старой версии. Сайт уже обновлен, но для отправки мини-тестов, открытых ответов и итоговой диагностики нужно заново опубликовать скрипт Google."
     : syncIssue;
+  const resultsCollapsed = getExperienceState().resultsCollapsed;
 
   resultsOverview.innerHTML = `
-    <div class="section-band results-shell">
+    <div class="section-band results-shell ${resultsCollapsed ? "is-collapsed" : ""}">
       <div class="section-title-row">
         <div>
           <p class="eyebrow">Результаты участника</p>
           <h2>Прогресс, ответы и статус отправки</h2>
         </div>
-        <span class="tag">${escapeHtml(state.participant.name || "Участник")}</span>
+        <div class="results-header-actions">
+          <span class="tag">${escapeHtml(state.participant.name || "Участник")}</span>
+          <button class="results-toggle" type="button" data-results-toggle aria-expanded="${String(!resultsCollapsed)}">
+            ${resultsCollapsed ? "Показать подробности" : "Свернуть подробности"}
+          </button>
+        </div>
       </div>
       ${syncIssue ? `<p class="submit-hint results-warning">Внимание: ${escapeHtml(syncIssueText)}.</p>` : ""}
-      <div class="results-cards">
-        <article class="results-card">
-          <strong>${completedModules.length}/${modules.length}</strong>
-          <span>мини-тестов пройдено</span>
-          <small>Средний результат: ${averageMiniScore}%</small>
-        </article>
-        <article class="results-card">
-          <strong>${totalOpenAnswered}/${totalOpenQuestions}</strong>
-          <span>открытых ответов заполнено</span>
-          <small>Рефлексия по рабочим ситуациям</small>
-        </article>
-        <article class="results-card">
-          <strong>${totalPracticeAnswered}/${modules.length}</strong>
-          <span>практических ответов заполнено</span>
-          <small>Ответы уйдут в отдельный лист</small>
-        </article>
-        <article class="results-card">
-          <strong>${finalScore ? `${finalScore.percent}%` : "не начат"}</strong>
-          <span>итоговый тест</span>
-          <small>${escapeHtml(state.resultStatus || "не отправлено")}</small>
-        </article>
-      </div>
-      <div class="results-table-wrap">
-        <table class="results-table">
-          <thead>
-            <tr>
-              <th>Блок</th>
-              <th>Мини-тест</th>
-              <th>Открытые ответы</th>
-              <th>Синхронизация</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${moduleRows.map((row) => `
+      <div class="results-details" ${resultsCollapsed ? "hidden" : ""}>
+        <div class="results-cards">
+          <article class="results-card">
+            <strong>${completedModules.length}/${modules.length}</strong>
+            <span>мини-тестов пройдено</span>
+            <small>Средний результат: ${averageMiniScore}%</small>
+          </article>
+          <article class="results-card">
+            <strong>${totalOpenAnswered}/${totalOpenQuestions}</strong>
+            <span>открытых ответов заполнено</span>
+            <small>Рефлексия по рабочим ситуациям</small>
+          </article>
+          <article class="results-card">
+            <strong>${totalPracticeAnswered}/${modules.length}</strong>
+            <span>практических ответов заполнено</span>
+            <small>Ответы уйдут в отдельный лист</small>
+          </article>
+          <article class="results-card">
+            <strong>${finalScore ? `${finalScore.percent}%` : "не начат"}</strong>
+            <span>итоговый тест</span>
+            <small>${escapeHtml(state.resultStatus || "не отправлено")}</small>
+          </article>
+        </div>
+        <div class="results-table-wrap">
+          <table class="results-table">
+            <thead>
               <tr>
-                <td>${escapeHtml(row.title)}</td>
-                <td>${row.submitted ? `<strong>${row.percent}%</strong> <span class="table-note">(${escapeHtml(row.score)})</span>` : `<span class="table-empty">не пройден</span>`}</td>
-                <td>${row.openTotal ? `${row.openAnswered}/${row.openTotal}` : `<span class="table-note">нет</span>`}</td>
-                <td>${escapeHtml(row.syncStatus)}</td>
+                <th>Блок</th>
+                <th>Мини-тест</th>
+                <th>Открытые ответы</th>
+                <th>Уровень</th>
+                <th>Синхронизация</th>
               </tr>
-            `).join("")}
-            <tr class="results-final-row">
-              <td>Итоговая диагностика</td>
-              <td colspan="2">${finalScore ? `<strong>${finalScore.percent}%</strong> <span class="table-note">(${finalScore.correct}/${finalScore.total})</span>` : `<span class="table-empty">не пройдена</span>`}</td>
-              <td>${finalScore ? escapeHtml(finalScore.level) : `<span class="table-empty">уровень не определен</span>`}</td>
-              <td>${escapeHtml(state.resultStatus || "не отправлено")}</td>
-            </tr>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${moduleRows.map((row) => `
+                <tr>
+                  <td>${escapeHtml(row.title)}</td>
+                  <td>${row.submitted ? `<strong>${row.percent}%</strong> <span class="table-note">(${escapeHtml(row.score)})</span>` : `<span class="table-empty">не пройден</span>`}</td>
+                  <td>${row.openTotal ? `${row.openAnswered}/${row.openTotal}` : `<span class="table-note">нет</span>`}</td>
+                  <td><span class="table-note">—</span></td>
+                  <td>${escapeHtml(row.syncStatus)}</td>
+                </tr>
+              `).join("")}
+              <tr class="results-final-row">
+                <td>Итоговая диагностика</td>
+                <td colspan="2">${finalScore ? `<strong>${finalScore.percent}%</strong> <span class="table-note">(${finalScore.correct}/${finalScore.total})</span>` : `<span class="table-empty">не пройдена</span>`}</td>
+                <td>${finalScore ? escapeHtml(finalScore.level) : `<span class="table-empty">уровень не определен</span>`}</td>
+                <td>${escapeHtml(state.resultStatus || "не отправлено")}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   `;
+
+  resultsOverview.querySelector("[data-results-toggle]")?.addEventListener("click", () => {
+    const experience = getExperienceState();
+    experience.resultsCollapsed = !resultsCollapsed;
+    updateExperience(experience);
+    renderResultsOverview();
+  });
 }
 
 async function authenticateParticipant(mode) {

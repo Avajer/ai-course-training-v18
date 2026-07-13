@@ -33,11 +33,17 @@ test("normalizes a missing experience state without sharing preferences", () => 
   assert.deepEqual(JSON.parse(JSON.stringify(core.normalizeExperience())), {
     panels: { objectives: true, progress: true, modules: true, actions: false },
     roadmapCollapsed: true,
+    resultsCollapsed: true,
     lessonSections: {},
     savedPrompts: [],
     promptNotes: {},
     libraryBookSeen: false
   });
+});
+
+test("сохраняет выбранное состояние панели прогресса и ответов", () => {
+  assert.equal(core.normalizeExperience({}).resultsCollapsed, true);
+  assert.equal(core.normalizeExperience({ resultsCollapsed: false }).resultsCollapsed, false);
 });
 
 test("classifies sensitive, high-cost external work as restricted", () => {

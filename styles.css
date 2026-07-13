@@ -652,6 +652,37 @@ li::marker { color: var(--accent); }
   gap: 1rem;
 }
 
+.results-shell.is-collapsed { gap: 0.7rem; }
+
+.results-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.results-toggle {
+  padding: 0.46rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--glass-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.results-toggle:hover {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.results-details {
+  display: grid;
+  gap: 1rem;
+}
+
 .results-empty p:last-child {
   max-width: 60ch;
   color: var(--muted);
@@ -749,7 +780,44 @@ li::marker { color: var(--accent); }
   gap: 0.6rem;
 }
 
-.account-status { margin-right: auto; }
+.account-status {
+  position: relative;
+  margin-left: auto;
+}
+
+.account-status--hero {
+  position: absolute;
+  top: 1.1rem;
+  right: 1.1rem;
+  z-index: 6;
+  margin: 0;
+}
+
+#courseHero.hero-slide > .account-status--hero {
+  position: absolute !important;
+  width: max-content;
+}
+
+.account-menu { position: relative; }
+
+.account-popover {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 0.42rem;
+  min-width: 17rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 16px 36px rgba(16, 27, 45, 0.16);
+}
+
+.account-popover strong { font-size: 0.84rem; }
+.account-popover span { color: var(--muted); font-size: 0.76rem; }
+.account-popover .ghost-button { justify-self: start; margin-top: 0.2rem; }
 
 .account-chip {
   display: inline-flex;
@@ -2572,8 +2640,12 @@ textarea::placeholder, input::placeholder { color: var(--soft); }
   .lesson-video-note { padding: 1rem; border-radius: 16px; }
 
   .top-actions { flex-direction: column; align-items: stretch; }
-  .account-status { margin-right: 0; }
+  .account-status { order: 0; width: 100%; margin: 0; }
+  .account-status--hero { position: static; width: 100%; margin: 0 0 1rem; }
+  .account-menu { width: 100%; }
   .account-chip { width: 100%; }
+  .account-popover { left: 0; right: auto; width: 100%; }
+  .results-header-actions { width: 100%; justify-content: space-between; }
   .theme-toggle { justify-content: center; }
 
   .compare-visual { grid-template-columns: 1fr; }

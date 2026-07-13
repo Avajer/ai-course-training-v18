@@ -127,6 +127,14 @@
 @keyframes dept-shimmer{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
 
 .hero-cycle { position: relative; display: grid; gap: 0.8rem; margin-top: 1.8rem; }
+.course-cycle { position: relative; display: grid; width: 100%; max-width: 1040px; gap: 0.5rem; margin: 0 auto; padding: 0.7rem 0.85rem 0.8rem; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--surface) 84%, transparent); box-shadow: var(--shadow-soft); }
+.course-cycle .hero-cycle__lead { justify-content: center; text-align: center; }
+.course-cycle .hero-cycle__steps { gap: 0.38rem; }
+.course-cycle .hero-cycle__path { top: 2.5rem; height: 2.2rem; }
+.course-cycle .hero-cycle__step { min-height: 4.9rem; padding: 0.5rem 0.45rem; border-radius: 10px; box-shadow: none; }
+.course-cycle .hero-cycle__number { font-size: 0.58rem; }
+.course-cycle .hero-cycle__step strong { margin-top: 0.22rem; font-size: 0.74rem; }
+.course-cycle .hero-cycle__step small { margin-top: 0.2rem; font-size: 0.62rem; line-height: 1.25; }
 .hero-cycle__lead { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; color: var(--muted); }
 .hero-cycle__lead span { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .hero-cycle__lead strong { font-size: 0.92rem; color: var(--ink); }
@@ -249,6 +257,7 @@
   25%,55%{ opacity:.9; } 100%{ transform:translateY(-46px) scale(1.05); opacity:0; } }
 
 @media (max-width: 760px) {
+  .course-cycle { padding: 0.65rem; }
   .brand-logo-host--hero .brand-logo__system { width: 3.3rem; height: 3.3rem; }
   .brand-logo-host--hero .brand-logo__copy strong { font-size: 1.02rem; }
   #promptLibraryBook { min-height: 360px; }

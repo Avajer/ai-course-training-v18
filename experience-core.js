@@ -19,6 +19,7 @@
     return {
       panels: { ...PANEL_DEFAULTS },
       roadmapCollapsed: true,
+      resultsCollapsed: true,
       lessonSections: {},
       savedPrompts: [],
       promptNotes: {},
@@ -32,6 +33,7 @@
       ...blankExperience(),
       ...source,
       panels: { ...PANEL_DEFAULTS, ...(source.panels || {}) },
+      resultsCollapsed: source.resultsCollapsed !== false,
       lessonSections: { ...(source.lessonSections || {}) },
       savedPrompts: Array.isArray(source.savedPrompts) ? source.savedPrompts : [],
       promptNotes: { ...(source.promptNotes || {}) },
