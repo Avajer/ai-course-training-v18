@@ -286,7 +286,7 @@ li::marker { color: var(--accent); }
 
 .deck {
   display: grid;
-  grid-template-columns: 460px minmax(0, 1fr);
+  grid-template-columns: 322px minmax(0, 1fr);
   gap: clamp(1.4rem, 1.8vw, 2.4rem);
   width: 100%;
   max-width: none;
@@ -310,12 +310,12 @@ li::marker { color: var(--accent); }
   align-self: start;
   max-height: calc(100vh - 2.4rem);
   overflow-y: auto;
-  padding: 1.5rem 1.3rem;
-  border-radius: 22px;
+  padding: 1.2rem 1rem;
+  border-radius: 18px;
   background: var(--surface-grad);
   border: 1px solid var(--line);
   backdrop-filter: blur(18px);
-  box-shadow: var(--shadow-soft);
+  box-shadow: 0 14px 34px rgba(16, 27, 45, 0.06);
   scrollbar-width: thin;
 }
 
