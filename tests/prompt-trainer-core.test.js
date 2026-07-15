@@ -44,6 +44,7 @@ test("analyzes a prompt with the supplied options", () => {
 
   assert.equal(result.text.original, "Сделай отчет.");
   assert.equal(result.text.normalized, "сделай отчет.");
+  assert.equal(Object.hasOwn(result.text, "options"), false);
   assert.deepEqual(result.options, options);
 });
 
@@ -113,4 +114,61 @@ test("manual profile overrides automatic classification", () => {
   assert.equal(result.profile, "report");
   assert.equal(result.classification.overridden, true);
   assert.equal(result.classification.primary, "universal");
+});
+
+test("element labels without content do not create a strong prompt", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Роль: роль. Контекст: контекст. Задача: задача. Формат: формат. Ограничения: ограничения.");
+
+  assert.ok(result.qualityScore < 40);
+  assert.ok(result.issues.some((issue) => issue.id === "empty-shell"));
+});
+
+test("long repeated text without task evidence does not create a strong prompt", () => {
+  const trainer = loadTrainer();
+  const padding = Array.from({ length: 120 }, () => "важный").join(" ");
+  const result = trainer.analyze("Контекст: " + padding + ".");
+
+  assert.ok(result.text.wordCount > 100);
+  assert.ok(result.qualityScore < 40);
+});
+
+test("high-cost audit prompt requires evidence and human verification", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("По данным ниже вынеси окончательное решение о нарушении.", {
+    profile: "audit", errorCost: "high", dataType: "internal"
+  });
+
+  assert.ok(result.safetyScore < 60);
+  assert.ok(result.risks.some((risk) => risk.id === "final-decision-without-human"));
+  assert.ok(result.issues.some((issue) => issue.id === "missing-verification"));
+});
+
+test("sensitive identifiers lower safety without lowering structural quality", () => {
+  const trainer = loadTrainer();
+  const prompt = "Для руководителя отдела проверь приложенную таблицу операций. Сверь каждую операцию с критериями: дата, сумма и контрагент. Верни таблицу с колонками «операция», «нарушение», «обоснование» и отдельный список неопределенностей. Не выноси окончательное решение: отметь позиции для ручной проверки.";
+  const safe = trainer.analyze(prompt, { profile: "audit", errorCost: "medium", dataType: "internal" });
+  const sensitive = trainer.analyze(prompt + " Контакт: user@example.com, +7 999 123-45-67.", {
+    profile: "audit", errorCost: "medium", dataType: "internal"
+  });
+
+  assert.ok(safe.qualityScore >= 60);
+  assert.equal(sensitive.qualityScore, safe.qualityScore);
+  assert.ok(sensitive.safetyScore < safe.safetyScore);
+  assert.ok(sensitive.risks.some((risk) => risk.id === "sensitive-identifiers"));
+});
+
+test("contradictory requirements reduce clarity", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Дай максимально подробный отчет, но ответ должен состоять из одного предложения.");
+
+  assert.ok(result.contradictions.length > 0);
+  assert.ok(result.dimensions.find((item) => item.id === "clarity").score < 70);
+});
+
+test("task overload is explained as a quality penalty", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Проанализируй документ, проверь цифры, сравни варианты, подготовь отчет и составь письмо.");
+
+  assert.ok(result.issues.some((issue) => issue.id === "task-overload"));
 });
