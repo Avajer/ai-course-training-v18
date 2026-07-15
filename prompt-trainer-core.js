@@ -19,9 +19,157 @@
       sections: sections, wordCount: tokens.length, charCount: original.length };
   }
 
-  function analyze(text, options) {
-    return { text: normalize(text), options: options || {} };
+  function freeze(value) {
+    if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+    Object.keys(value).forEach(function (key) { freeze(value[key]); });
+    return Object.freeze(value);
   }
 
-  return { normalize: normalize, analyze: analyze };
+  var PROFILES = freeze({
+    document: {
+      name: "Анализ документа",
+      signals: [
+        { phrase: "документ", weight: 3 }, { phrase: "договор", weight: 3 },
+        { phrase: "приложени", weight: 2 }, { phrase: "пункт", weight: 2 }
+      ],
+      requiredDimensions: ["action", "data", "output"],
+      weights: { action: 1, data: 2, output: 2, verification: 1 }
+    },
+    letter: {
+      name: "Подготовка письма",
+      signals: [
+        { phrase: "письмо", weight: 4 }, { phrase: "адресат", weight: 3 },
+        { phrase: "тема письма", weight: 3 }, { phrase: "обращени", weight: 2 }
+      ],
+      requiredDimensions: ["action", "purpose", "output"],
+      weights: { action: 1, purpose: 2, output: 2, clarity: 1 }
+    },
+    data: {
+      name: "Анализ данных",
+      signals: [
+        { phrase: "таблиц", weight: 3 }, { phrase: "данные", weight: 2 },
+        { phrase: "выборк", weight: 2 }, { phrase: "показател", weight: 3 },
+        { phrase: "рассчита", weight: 2 }
+      ],
+      requiredDimensions: ["action", "data", "criteria"],
+      weights: { action: 1, data: 3, criteria: 2, verification: 2 }
+    },
+    audit: {
+      name: "Аудит и контроль",
+      signals: [
+        { phrase: "аудитор", weight: 4 }, { phrase: "нарушени", weight: 3 },
+        { phrase: "доказательств", weight: 4 }, { phrase: "контроль", weight: 2 },
+        { phrase: "выборк", weight: 2 }, { phrase: "операци", weight: 2 }
+      ],
+      requiredDimensions: ["action", "data", "criteria", "verification"],
+      weights: { action: 1, data: 2, criteria: 3, verification: 3 }
+    },
+    construction: {
+      name: "Строительный контроль",
+      signals: [
+        { phrase: "кс-2", weight: 4 }, { phrase: "кс-3", weight: 4 },
+        { phrase: "смет", weight: 3 }, { phrase: "строительн", weight: 3 },
+        { phrase: "журнал работ", weight: 4 }, { phrase: "подрядчик", weight: 2 }
+      ],
+      requiredDimensions: ["action", "data", "criteria", "verification"],
+      weights: { action: 1, data: 3, criteria: 3, verification: 3 }
+    },
+    planning: {
+      name: "Планирование работы",
+      signals: [
+        { phrase: "план", weight: 3 }, { phrase: "срок", weight: 3 },
+        { phrase: "этап", weight: 2 }, { phrase: "задач", weight: 2 },
+        { phrase: "приоритет", weight: 3 }
+      ],
+      requiredDimensions: ["action", "purpose", "criteria", "nextStep"],
+      weights: { action: 1, purpose: 2, criteria: 2, nextStep: 3 }
+    },
+    comparison: {
+      name: "Сравнение вариантов",
+      signals: [
+        { phrase: "сравни", weight: 4 }, { phrase: "сопостав", weight: 3 },
+        { phrase: "вариант", weight: 3 }, { phrase: "критери", weight: 2 },
+        { phrase: "предложени", weight: 2 }
+      ],
+      requiredDimensions: ["action", "data", "criteria", "output"],
+      weights: { action: 2, data: 2, criteria: 3, output: 2 }
+    },
+    extraction: {
+      name: "Извлечение информации",
+      signals: [
+        { phrase: "извлеки", weight: 4 }, { phrase: "выдели", weight: 2 },
+        { phrase: "структурир", weight: 3 }, { phrase: "реквизит", weight: 3 },
+        { phrase: "поле", weight: 2 }
+      ],
+      requiredDimensions: ["action", "data", "output"],
+      weights: { action: 2, data: 3, output: 3, clarity: 1 }
+    },
+    report: {
+      name: "Подготовка отчета",
+      signals: [
+        { phrase: "отчет", weight: 4 }, { phrase: "заключени", weight: 3 },
+        { phrase: "вывод", weight: 2 }, { phrase: "рекомендаци", weight: 2 },
+        { phrase: "итог", weight: 2 }
+      ],
+      requiredDimensions: ["action", "data", "output", "verification"],
+      weights: { action: 1, data: 2, output: 3, verification: 2 }
+    },
+    universal: {
+      name: "Универсальная задача",
+      signals: [],
+      requiredDimensions: ["action", "purpose", "output"],
+      weights: { action: 1, purpose: 1, data: 1, output: 1 }
+    }
+  });
+
+  function classify(normalizedText) {
+    var text = typeof normalizedText === "string" ? normalizedText : normalizedText && normalizedText.normalized;
+    text = String(text || "").toLowerCase();
+    var candidates = Object.keys(PROFILES).filter(function (id) { return id !== "universal"; }).map(function (id) {
+      var profile = PROFILES[id];
+      var evidence = profile.signals.filter(function (signal) { return text.indexOf(signal.phrase) !== -1; }).map(function (signal) {
+        return { phrase: signal.phrase, weight: signal.weight };
+      });
+      var score = evidence.reduce(function (total, signal) { return total + signal.weight; }, 0);
+      return { id: id, evidence: evidence, score: score, confidence: Math.min(1, score / 10) };
+    }).sort(function (left, right) { return right.score - left.score; });
+    var primaryCandidate = candidates[0];
+    var specialized = primaryCandidate.evidence.length >= 2 && primaryCandidate.confidence >= 0.34;
+    var secondaryCandidate = candidates[1];
+    var secondary = secondaryCandidate.evidence.length >= 2 && secondaryCandidate.confidence >= 0.34
+      ? secondaryCandidate.id : null;
+
+    if (!specialized) {
+      return {
+        primary: "universal",
+        secondary: null,
+        confidence: Math.min(0.33, primaryCandidate.confidence),
+        evidence: primaryCandidate.evidence
+      };
+    }
+
+    return {
+      primary: primaryCandidate.id,
+      secondary: secondary,
+      confidence: primaryCandidate.confidence,
+      evidence: primaryCandidate.evidence
+    };
+  }
+
+  function analyze(text, options) {
+    var normalized = normalize(text);
+    var suppliedOptions = options || {};
+    var classification = classify(normalized);
+    var manualProfile = suppliedOptions.profile;
+    var hasManualProfile = manualProfile && manualProfile !== "auto" && Object.prototype.hasOwnProperty.call(PROFILES, manualProfile);
+    if (hasManualProfile) classification.overridden = true;
+    return {
+      text: normalized,
+      options: suppliedOptions,
+      classification: classification,
+      profile: hasManualProfile ? manualProfile : classification.primary
+    };
+  }
+
+  return { PROFILES: PROFILES, normalize: normalize, classify: classify, analyze: analyze };
 });
