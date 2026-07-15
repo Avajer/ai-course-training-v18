@@ -338,3 +338,40 @@ test("semicolon-delimited instructions do not resolve a missing data reference",
 
   assert.ok(result.issues.some((item) => item.id === "unresolved-reference"));
 });
+
+test("feedback names the detected profile and its highest-priority gap", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Сравни два коммерческих предложения и выбери вариант.", { errorCost: "medium" });
+
+  assert.equal(result.profile, "comparison");
+  assert.match(result.commentary.summary, /сравнен/i);
+  assert.match(result.commentary.summary, /профил[ья].*сравнен/i);
+  assert.match(result.commentary.priorityText, /критери/i);
+  assert.ok(result.issues.some((item) => item.id === "missing-criteria"));
+});
+
+test("improvement preserves facts and marks unknown data", () => {
+  const trainer = loadTrainer();
+  const source = "Проверь акт КС-2 за июнь 2026 года и найди расхождения.";
+  const analysis = trainer.analyze(source, { profile: "construction" });
+  const improved = trainer.improve(source, analysis);
+
+  assert.equal(improved.full.includes("Исходная задача:\n" + source), true);
+  assert.match(improved.full, /КС-2/);
+  assert.match(improved.full, /июнь 2026/);
+  assert.ok(improved.insertedFields.length > 0);
+  assert.ok(improved.insertedFields.every((field) => /^\[[^\]]+\]$/.test(field)));
+  assert.doesNotMatch(improved.full, /точно установлено|нарушение подтверждено/i);
+});
+
+test("comparison reports meaningful improvement by dimension", () => {
+  const trainer = loadTrainer();
+  const before = trainer.analyze("Проверь отчет.");
+  const after = trainer.analyze("Проверь отчет за июнь по приложенному тексту. Верни таблицу: фрагмент, ошибка, основание, рекомендация. Не придумывай отсутствующие факты.");
+  const comparison = trainer.compare(before, after);
+
+  assert.ok(comparison.qualityDelta > 20);
+  assert.ok(comparison.improved.length >= 2);
+  assert.equal(comparison.dimensionDeltas.length, before.dimensions.length);
+  assert.ok(comparison.dimensionDeltas.some((item) => item.id === "data" && item.delta > 0));
+});

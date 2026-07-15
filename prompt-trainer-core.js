@@ -544,6 +544,7 @@
     var verificationEvidence = collectSignals(text, [
       [/\b(?:сверь|сопоставь|проверь)\b\s+[^.!?\n]{0,40}\b(?:с|по)\b/i],
       [/\b(?:неопределен\w*|недостаточно\s+данных|укажи\s+сомнен\w*)\b/i],
+      [/\bне\s+(?:придумывай|выдумывай|добавляй)\s+[^.!?\n]{0,40}\b(?:факт\w*|данн\w*|источник\w*)\b/i],
       [/\b(?:ручн\w*\s+провер\w*|передай[^.!?\n]{0,30}специалист\w*|провер\w*\s+человек\w*)\b/i],
       [/\b(?:не\s+выноси|не\s+принимай)\s+окончательн\w*\b/i]
     ]);
@@ -603,6 +604,111 @@
       totalScore += dimension.score * weight;
     });
     return totalWeight ? totalScore / totalWeight : 0;
+  }
+
+  function severityRank(severity) {
+    return { critical: 3, warning: 2, info: 1 }[severity] || 0;
+  }
+
+  function priorityWeight(finding, profile) {
+    var dimensionId = /^missing-(.+)$/.exec(finding.id);
+    return dimensionId && profile.weights[dimensionId[1]] || 0;
+  }
+
+  function findPriorityFinding(analysis) {
+    var profile = PROFILES[analysis.profile];
+    var findings = analysis.issues.concat(analysis.risks).slice();
+    findings.sort(function (left, right) {
+      return severityRank(right.severity) - severityRank(left.severity)
+        || priorityWeight(right, profile) - priorityWeight(left, profile)
+        || left.id.localeCompare(right.id);
+    });
+    return findings[0] || null;
+  }
+
+  function composeCommentary(analysis) {
+    var profile = PROFILES[analysis.profile];
+    var strongest = analysis.dimensions.filter(function (dimension) {
+      return dimension.id !== "privacy" && dimension.score >= 45;
+    }).sort(function (left, right) {
+      return right.score - left.score || left.name.localeCompare(right.name);
+    }).slice(0, 2);
+    var priority = findPriorityFinding(analysis);
+    var summary = "Профиль «" + profile.name + "»: распознана задача " + profile.name.toLowerCase() + ".";
+    var strengthsText = strongest.length
+      ? "Уже заданы: " + strongest.map(function (dimension) { return dimension.name.toLowerCase(); }).join("; ") + "."
+      : "Пока нет измерений, подтвержденных достаточными признаками.";
+    var priorityText = priority
+      ? "Приоритетный пробел: " + priority.title + ". " + priority.detail
+      : "Приоритетных пробелов по текущим правилам не обнаружено.";
+    var nextStepText = priority
+      ? "Следующее изменение: " + priority.recommendation
+      : "Следующее изменение: сохраните текущую структуру и проверьте, достаточно ли исходных данных.";
+    return {
+      summary: summary,
+      strengthsText: strengthsText,
+      priorityText: priorityText,
+      nextStepText: nextStepText
+    };
+  }
+
+  function missingField(profile, dimensionId) {
+    var labels = {
+      action: "Конкретное действие и объект работы",
+      purpose: "Цель, адресат и рабочий контекст",
+      data: "Исходные материалы или точный источник",
+      output: "Вид результата и обязательные части",
+      criteria: "Критерии проверки, границы и допустимые расхождения",
+      verification: "Порядок отметки неопределенности и ручной проверки",
+      privacy: "Правила работы с идентификаторами и персональными данными",
+      nextStep: "Действие при нехватке данных или после проверки",
+      clarity: "Однозначная формулировка требований"
+    };
+    return "[" + labels[dimensionId] + " для профиля «" + profile.name + "»]";
+  }
+
+  function improve(text, analysis, options) {
+    var normalized = normalize(text);
+    var effectiveAnalysis = analysis && analysis.dimensions && analysis.profile ? analysis : analyze(normalized.original, options);
+    var profile = PROFILES[effectiveAnalysis.profile];
+    var insertedFields = profile.requiredDimensions.filter(function (id) {
+      return findDimension(effectiveAnalysis.dimensions, id).score < 45;
+    }).map(function (id) {
+      return missingField(profile, id);
+    });
+    var preservedFacts = normalized.sections.length ? normalized.sections.slice() : normalized.original ? [normalized.original] : [];
+    var fieldsText = insertedFields.length
+      ? "\n\nПоля для заполнения:\n" + insertedFields.map(function (field) { return "- " + field; }).join("\n")
+      : "";
+    return {
+      concise: normalized.original + fieldsText,
+      full: "Исходная задача:\n" + normalized.original + fieldsText,
+      insertedFields: insertedFields,
+      preservedFacts: preservedFacts
+    };
+  }
+
+  function compare(before, after) {
+    var afterById = {};
+    after.dimensions.forEach(function (dimension) { afterById[dimension.id] = dimension; });
+    var dimensionDeltas = before.dimensions.map(function (dimension) {
+      var afterDimension = afterById[dimension.id];
+      var afterScore = afterDimension ? afterDimension.score : 0;
+      return {
+        id: dimension.id,
+        name: dimension.name,
+        before: dimension.score,
+        after: afterScore,
+        delta: afterScore - dimension.score
+      };
+    });
+    return {
+      qualityDelta: after.qualityScore - before.qualityScore,
+      safetyDelta: after.safetyScore - before.safetyScore,
+      dimensionDeltas: dimensionDeltas,
+      improved: dimensionDeltas.filter(function (item) { return item.delta > 0; }),
+      regressed: dimensionDeltas.filter(function (item) { return item.delta < 0; })
+    };
   }
 
   function findRange(text, patterns) {
@@ -814,7 +920,7 @@
       };
     });
 
-    return {
+    var analysis = {
       text: normalized,
       options: suppliedOptions,
       classification: classification,
@@ -828,7 +934,9 @@
       risks: risks,
       contradictions: contradictions
     };
+    analysis.commentary = composeCommentary(analysis);
+    return analysis;
   }
 
-  return { PROFILES: PROFILES, normalize: normalize, classify: classify, analyze: analyze };
+  return { PROFILES: PROFILES, normalize: normalize, classify: classify, analyze: analyze, improve: improve, compare: compare };
 });
