@@ -42,6 +42,11 @@
   min-width: 0;
 }
 
+#courseHero.hero-slide > .hero-topbar {
+  position: relative;
+  z-index: 4;
+}
+
 .hero-topbar .brand-logo-host--hero {
   min-width: 0;
   margin-bottom: 0;
