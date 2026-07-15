@@ -671,6 +671,12 @@
     return ranges.some(function (range) { return index >= range.start && index < range.end; });
   }
 
+  function hasSuppliedQuoteContext(source, quoteStart) {
+    var lineStart = Math.max(source.lastIndexOf("\n", quoteStart - 1), source.lastIndexOf("\r", quoteStart - 1)) + 1;
+    var context = source.slice(lineStart, quoteStart);
+    return /(?:в\s+документе\s+указано|исходн[\p{L}\p{N}_]*\s+текст|значени[\p{L}\p{N}_]*\s+поля|строк[\p{L}\p{N}_]*\s+источник[\p{L}\p{N}_]*)/iu.test(context);
+  }
+
   function collectFactualFragments(source) {
     var facts = [];
     var quotedRanges = [];
@@ -678,7 +684,7 @@
     var match;
     while ((match = quotePattern.exec(source))) {
       quotedRanges.push({ start: match.index, end: match.index + match[0].length });
-      facts.push({ phrase: match[0], start: match.index });
+      if (hasSuppliedQuoteContext(source, match.index)) facts.push({ phrase: match[0], start: match.index });
     }
     var addMatches = function (pattern, captureIndex) {
       collectIdentifierMatches(source, pattern, captureIndex).forEach(function (evidence) {

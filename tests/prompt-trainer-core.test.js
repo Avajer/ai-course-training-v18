@@ -388,6 +388,33 @@ test("improvement returns no preserved facts for instruction-only source", () =>
   assert.deepEqual(Array.from(improved.preservedFacts), []);
 });
 
+test("improvement does not treat quoted instructions or safety constraints as facts", () => {
+  const trainer = loadTrainer();
+  const prompts = [
+    "Верни «таблицу расхождений».",
+    "Не указывай «персональные данные»."
+  ];
+
+  prompts.forEach((source) => {
+    const improved = trainer.improve(source, trainer.analyze(source));
+    assert.deepEqual(Array.from(improved.preservedFacts), [], source);
+  });
+});
+
+test("improvement preserves quoted fragments only in supplied-source contexts", () => {
+  const trainer = loadTrainer();
+  const cases = [
+    ["В документе указано: «Срок оплаты: 15.06.2026».", "«Срок оплаты: 15.06.2026»"],
+    ["Исходный текст: «Поставка завершена».", "«Поставка завершена»"],
+    ["Значение поля: «125 000 руб.».", "«125 000 руб.»"]
+  ];
+
+  cases.forEach(([source, fact]) => {
+    const improved = trainer.improve(source, trainer.analyze(source));
+    assert.deepEqual(Array.from(improved.preservedFacts), [fact], source);
+  });
+});
+
 test("comparison reports meaningful improvement by dimension", () => {
   const trainer = loadTrainer();
   const before = trainer.analyze("Проверь отчет.");
