@@ -21,9 +21,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Geologica:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=66">
-  <link rel="stylesheet" href="features.css?v=66">
-  <link rel="stylesheet" href="experience.css?v=66">
+  <link rel="stylesheet" href="styles.css?v=67">
+  <link rel="stylesheet" href="features.css?v=67">
+  <link rel="stylesheet" href="experience.css?v=67">
 </head>
 <body class="tpl-course-module">
   <div class="deck app-shell">
@@ -83,8 +83,10 @@
         <div class="hero-glow hero-glow-1" aria-hidden="true"></div>
         <div class="hero-glow hero-glow-2" aria-hidden="true"></div>
         <div class="hero-grid-lines" aria-hidden="true"></div>
-        <div id="brandLogoHero" class="brand-logo-host brand-logo-host--hero"></div>
-        <div id="accountStatus" class="account-status account-status--hero" aria-live="polite"></div>
+        <div class="hero-topbar">
+          <div id="brandLogoHero" class="brand-logo-host brand-logo-host--hero"></div>
+          <div id="accountStatus" class="account-status account-status--hero" aria-live="polite"></div>
+        </div>
         <div class="hero-video-cover" aria-hidden="true">
           <video
             id="heroIntroVideo"
@@ -135,15 +137,15 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="experience-core.js?v=66"></script>
-  <script src="script.js?v=66"></script>
-  <script src="experience.js?v=66"></script>
-  <script src="features.js?v=66"></script>
+  <script src="experience-core.js?v=67"></script>
+  <script src="script.js?v=67"></script>
+  <script src="experience.js?v=67"></script>
+  <script src="features.js?v=67"></script>
   <script>
     /* PWA: офлайн-режим и установка как приложение (только на https / localhost) */
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        var reloadedKey = "aiCourseSwReloadedV66";
+        var reloadedKey = "aiCourseSwReloadedV67";
         var onControllerChange = function () {
           if (sessionStorage.getItem(reloadedKey)) return;
           sessionStorage.setItem(reloadedKey, "1");

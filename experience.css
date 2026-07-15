@@ -31,8 +31,34 @@
 .brand-logo--compact .brand-logo__copy strong { font-size: 0.96rem; }
 .brand-logo--compact .brand-logo__copy small { display: none; }
 
+.hero-topbar {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.hero-topbar .brand-logo-host--hero {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.hero-topbar .account-status--hero {
+  position: static;
+  flex: 0 1 auto;
+  width: auto;
+  max-width: min(100%, 28rem);
+  margin: 0;
+}
+
 .hero-video-cover {
   position: relative;
+  isolation: isolate;
+  contain: layout paint;
   width: 100%;
   aspect-ratio: 12 / 5;
   margin: 1rem 0 1.35rem;
@@ -45,6 +71,8 @@
 
 .hero-video-cover__media {
   display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -285,6 +313,8 @@
 
 @media (max-width: 760px) {
   .course-cycle { padding: 0.65rem; }
+  .hero-topbar { flex-direction: column; gap: 0.8rem; }
+  .hero-topbar .account-status--hero { width: 100%; max-width: none; }
   .brand-logo-host--hero .brand-logo__system { width: 3.3rem; height: 3.3rem; }
   .brand-logo-host--hero .brand-logo__copy strong { font-size: 1.02rem; }
   .hero-video-cover { aspect-ratio: 16 / 9; max-height: 220px; margin: 0.8rem 0 1.1rem; border-radius: 12px; }
