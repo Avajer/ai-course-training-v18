@@ -8,9 +8,27 @@ const ACCESS_CODES_SHEET = 'Коды доступа';
 const ACCESS_LOG_SHEET = 'Журнал доступа';
 const MAX_FAILED_ATTEMPTS_PER_CODE = 5;
 
-// Необязательно: задайте секрет, чтобы статистику в admin.html видел только владелец.
-// Пустая строка = статистика доступна без ключа. Если задать, в admin.html введите тот же ключ.
-const OWNER_KEY = '';
+// Секреты не хранятся в коде. OWNER_KEY задаётся в Project Settings -> Script Properties.
+function getOwnerKey_() {
+  return String(PropertiesService.getScriptProperties().getProperty('OWNER_KEY') || '').trim();
+}
+
+// Запустите один раз вручную после вставки скрипта. Ключ сохраняется только
+// в защищенных свойствах проекта и выводится в журнал выполнения владельца.
+function setupSecurity() {
+  const properties = PropertiesService.getScriptProperties();
+  let ownerKey = String(properties.getProperty('OWNER_KEY') || '').trim();
+
+  if (!ownerKey) {
+    const firstPart = Utilities.getUuid().replace(/-/g, '').toUpperCase();
+    const secondPart = Utilities.getUuid().replace(/-/g, '').toUpperCase();
+    ownerKey = firstPart + secondPart;
+    properties.setProperty('OWNER_KEY', ownerKey);
+  }
+
+  console.log('OWNER_KEY: ' + ownerKey);
+  return ownerKey;
+}
 
 function doGet(e) {
   const callback = e.parameter.callback || 'callback';
@@ -38,13 +56,15 @@ function doGet(e) {
     } else if (action === 'health') {
       response = {
         ok: true,
-        version: '2026-07-01-v7-bulk-open-practice-results',
+        version: '2026-07-15-v8-security-hardening',
         capabilities: {
           register: true,
           closedRegistration: true,
           accessCodes: true,
+          strongAccessCodes: true,
           accessLog: true,
           accessCodeAttemptLimit: MAX_FAILED_ATTEMPTS_PER_CODE,
+          ownerKeyRequired: true,
           login: true,
           resetPassword: true,
           stats: true,
@@ -444,7 +464,8 @@ function generateAccessCodes() {
 
   const rows = [];
   while (rows.length < count) {
-    const code = 'AI-' + Utilities.getUuid().slice(0, 8).toUpperCase();
+    const rawCode = Utilities.getUuid().replace(/-/g, '').slice(0, 16).toUpperCase();
+    const code = 'AI-' + rawCode.match(/.{1,4}/g).join('-');
     if (existing[code]) continue;
     existing[code] = true;
     rows.push([new Date(), code, 'active', '', '', '', '']);
@@ -773,7 +794,11 @@ function safeJsonParse_(value, fallback) {
 
 /* ====== Сводная статистика для admin.html (только чтение) ====== */
 function computeStats_(ownerKey) {
-  if (OWNER_KEY && String(ownerKey || '') !== String(OWNER_KEY)) {
+  const configuredKey = getOwnerKey_();
+  if (!configuredKey) {
+    return { ok: false, error: 'Ключ владельца не настроен в Script Properties.' };
+  }
+  if (String(ownerKey || '') !== configuredKey) {
     return { ok: false, error: 'Неверный ключ владельца.' };
   }
 
