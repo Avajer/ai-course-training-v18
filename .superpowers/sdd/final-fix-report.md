@@ -73,3 +73,65 @@ The two seam-adjacent pairs are distinct (`119 != 120` at the direction change a
 
 - The lifecycle test is a deterministic DOM harness, not a manual run on a physical legacy Safari device. The compatibility branch follows the documented legacy MediaQueryList API and is covered by the test.
 - Browsers without IntersectionObserver use the existing graceful fallback where the hero is treated as visible; modern supported Safari versions provide IntersectionObserver.
+
+## Follow-up Re-review Wave
+
+Date: 2026-07-15
+
+This section supersedes the earlier statements that IntersectionObserver watches `#courseHero` and that browsers without IntersectionObserver keep the hero permanently visible.
+
+### Changes
+
+- IntersectionObserver now watches `#heroIntroVideo`, so playback pauses as soon as the video itself leaves the viewport rather than waiting for the entire course hero to leave.
+- Browsers without IntersectionObserver use `getBoundingClientRect()` against the viewport. One passive `scroll` listener and one `resize` listener schedule the check, while a pending-frame guard coalesces repeated events into one `requestAnimationFrame` callback.
+- The lifecycle harness verifies the exact observer target, visible/offscreen fallback transitions, and rAF coalescing.
+- The service-worker contract now verifies all three video guarantees: poster is in `CORE`, MP4 is not in `CORE`, and `/assets/videos/` returns direct `fetch(request)` without `cache.put` or another cache API in that branch.
+
+### TDD Evidence
+
+Initial RED run:
+
+```text
+$ node --test tests/experience-core.test.js
+tests 17
+pass 15
+fail 2
+
+failure 1: observer target was #courseHero instead of #heroIntroVideo
+failure 2: fallback scheduled 0 requestAnimationFrame callbacks instead of 1
+```
+
+GREEN run after the lifecycle change:
+
+```text
+$ node --test tests/experience-core.test.js
+tests 17
+pass 17
+fail 0
+```
+
+### Required Verification
+
+```text
+$ node --check experience.js
+exit 0
+
+$ node --test tests/experience-core.test.js
+tests 17
+pass 17
+fail 0
+
+$ git diff --check
+exit 0
+```
+
+### Follow-up Self-Review
+
+- Both the IntersectionObserver and fallback paths update the same `videoVisible` gate used by document visibility and reduced-motion checks.
+- A video whose `bottom` is exactly `0` is treated as offscreen; horizontal bounds are checked as well.
+- Repeated `scroll` and `resize` events cannot queue another visibility check while one animation frame is pending.
+- No production change to `sw.js` was needed because its existing early video branch already implements network-only behavior; the missing protection was test coverage.
+
+### Follow-up Residual Concern
+
+- The fallback is covered in a deterministic DOM harness but has not been manually exercised on a physical browser version old enough to lack IntersectionObserver.

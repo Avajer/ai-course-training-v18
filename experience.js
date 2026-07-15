@@ -39,13 +39,12 @@
   function configureHeroVideo() {
     const video = $("#heroIntroVideo");
     if (!video) return;
-    const hero = $("#courseHero");
     const preference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    let heroVisible = !hero || !("IntersectionObserver" in window);
+    let videoVisible = false;
 
     const syncPlayback = () => {
       const documentVisible = document.visibilityState === "visible";
-      if (preference?.matches || !documentVisible || !heroVisible) {
+      if (preference?.matches || !documentVisible || !videoVisible) {
         video.pause();
         video.removeAttribute("autoplay");
         return;
@@ -55,12 +54,29 @@
       if (playResult && typeof playResult.catch === "function") playResult.catch(() => {});
     };
 
-    if (hero && "IntersectionObserver" in window) {
-      const observer = new IntersectionObserver(([entry]) => {
-        heroVisible = entry.isIntersecting;
+    if ("IntersectionObserver" in window) {
+      const observer = new window.IntersectionObserver(([entry]) => {
+        videoVisible = entry.isIntersecting;
         syncPlayback();
       }, { threshold: 0.01 });
-      observer.observe(hero);
+      observer.observe(video);
+    } else {
+      let visibilityFrame = null;
+      const updateVideoVisibility = () => {
+        visibilityFrame = null;
+        const rect = video.getBoundingClientRect();
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+        videoVisible = rect.bottom > 0 && rect.right > 0 && rect.top < viewportHeight && rect.left < viewportWidth;
+        syncPlayback();
+      };
+      const scheduleVisibilityCheck = () => {
+        if (visibilityFrame !== null) return;
+        visibilityFrame = window.requestAnimationFrame(updateVideoVisibility);
+      };
+      window.addEventListener("scroll", scheduleVisibilityCheck, { passive: true });
+      window.addEventListener("resize", scheduleVisibilityCheck);
+      scheduleVisibilityCheck();
     }
 
     syncPlayback();
