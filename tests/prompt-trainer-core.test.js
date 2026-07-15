@@ -268,3 +268,73 @@ test("yes-or-no-only answer conflicts with detailed justification", () => {
 
   assert.ok(result.contradictions.some((item) => item.id === "detail-vs-binary-answer"));
 });
+
+test("high-stakes action-object commands require human verification without a decision noun", () => {
+  const trainer = loadTrainer();
+  const prompts = [
+    "Поставь диагноз пациенту по симптомам.",
+    "Одобри выдачу кредита клиенту.",
+    "Подтверди нарушение контроля.",
+    "Признай договор недействительным."
+  ];
+
+  prompts.forEach((prompt) => {
+    const result = trainer.analyze(prompt);
+    const risk = result.risks.find((item) => item.id === "final-decision-without-human");
+
+    assert.equal(risk?.severity, "critical", prompt);
+    assert.ok(result.safetyScore < 60, prompt);
+  });
+});
+
+test("ordinary approval, confirmation, and recognition commands stay outside high-stakes risk", () => {
+  const trainer = loadTrainer();
+  const prompts = [
+    "Одобри выдачу пропуска клиенту.",
+    "Подтверди нарушение формата в документе.",
+    "Признай договор полезным."
+  ];
+
+  prompts.forEach((prompt) => {
+    const result = trainer.analyze(prompt);
+    assert.equal(result.risks.some((item) => item.id === "final-decision-without-human"), false, prompt);
+  });
+});
+
+test("human verification permits a high-stakes action-object review", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Одобри выдачу кредита клиенту только после ручной проверки.");
+
+  assert.equal(result.risks.some((item) => item.id === "final-decision-without-human"), false);
+});
+
+test("detects SNILS when the checksum remainder is 100", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("СНИЛС: 002-999-989 00.");
+
+  assert.ok(result.risks.some((item) => item.id === "sensitive-identifiers"));
+});
+
+test("does not treat negated precision as impossible precision", () => {
+  const trainer = loadTrainer();
+  const prompts = ["Дай неточный прогноз.", "Дай не точный прогноз."];
+
+  prompts.forEach((prompt) => {
+    const result = trainer.analyze(prompt);
+    assert.equal(result.issues.some((item) => item.id === "impossible-precision"), false, prompt);
+  });
+});
+
+test("does not treat separated negation as a detailed requirement", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Ответ не должен быть подробным, но должен состоять из одного предложения.");
+
+  assert.equal(result.contradictions.length, 0);
+});
+
+test("semicolon-delimited instructions do not resolve a missing data reference", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("По данным ниже:\nСначала проверь документ; затем подготовь отчет.");
+
+  assert.ok(result.issues.some((item) => item.id === "unresolved-reference"));
+});

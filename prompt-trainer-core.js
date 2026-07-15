@@ -228,17 +228,41 @@
     return null;
   }
 
-  function firstMatch(text, patterns) {
+  function firstMatchWhere(text, patterns, acceptsMatch) {
     for (var index = 0; index < patterns.length; index += 1) {
-      var match = findNextMatch(text, compileRussianPattern(patterns[index]));
-      if (match) {
-        return {
-          phrase: match[0],
-          ranges: [{ start: match.index, end: match.index + match[0].length }]
-        };
+      var compiled = compileRussianPattern(patterns[index]);
+      var match;
+      while ((match = findNextMatch(text, compiled))) {
+        if (!acceptsMatch || acceptsMatch(text, match.index, match)) {
+          return {
+            phrase: match[0],
+            ranges: [{ start: match.index, end: match.index + match[0].length }]
+          };
+        }
       }
     }
     return null;
+  }
+
+  function firstMatch(text, patterns) {
+    return firstMatchWhere(text, patterns, function () { return true; });
+  }
+
+  function isNegatedAt(text, index) {
+    return /(?:^|[^\p{L}\p{N}_])не\s*$/u.test(text.slice(0, index));
+  }
+
+  function isNegatedDetailAt(text, index) {
+    var context = text.slice(Math.max(0, index - 60), index);
+    return /(?:^|[^\p{L}\p{N}_])не\s+(?:(?:долж[\p{L}\p{N}_]*|нужно|следует)\s+)?(?:быть\s+)?$/u.test(context);
+  }
+
+  function firstUnnegatedMatch(text, patterns) {
+    return firstMatchWhere(text, patterns, function (source, index) { return !isNegatedAt(source, index); });
+  }
+
+  function firstUnnegatedDetailMatch(text, patterns) {
+    return firstMatchWhere(text, patterns, function (source, index) { return !isNegatedDetailAt(source, index); });
   }
 
   function appendEvidence(target, evidence) {
@@ -280,7 +304,8 @@
     if (digits.length !== 11) return false;
     var sum = 0;
     for (var index = 0; index < 9; index += 1) sum += Number(digits.charAt(index)) * (9 - index);
-    var check = sum < 100 ? sum : sum === 100 || sum === 101 ? 0 : sum % 101;
+    var remainder = sum % 101;
+    var check = sum < 100 ? sum : remainder === 100 || remainder === 101 ? 0 : remainder;
     return check === Number(digits.slice(9));
   }
 
@@ -404,7 +429,7 @@
 
   function detectContradictions(text) {
     var contradictions = [];
-    var detailed = firstMatch(text, [/\b(?:максимально\s+)?подробн\w*\b/i, /\bразвернут\w*\b/i]);
+    var detailed = firstUnnegatedDetailMatch(text, [/\b(?:максимально\s+)?подробн\w*\b/i, /\bразвернут\w*\b/i]);
     var oneSentence = firstMatch(text, [/\b(?:одного|одним)\s+предложени\w*\b/i]);
     var binaryOnly = firstMatch(text, [/\b(?:только|лишь)\s+(?:[«"]?да[»"]?\s+или\s+[«"]?нет[»"]?|да\s*\/\s*нет|yes\s*\/\s*no)(?=[^\p{L}\p{N}_]|$)/i]);
     var brief = firstMatch(text, [/\b(?:кратк\w*|лаконичн\w*|без\s+объяснен\w*)\b/i]);
@@ -452,7 +477,7 @@
       if (/^\[[^\]\n]{3,}\]$/.test(line)) return true;
       if (isInstructionLine(line)) return false;
       return /^[^:\n]{1,40}:\s*\S+/.test(line)
-        || /[|;]/.test(line)
+        || /\|/.test(line)
         || /\d/.test(line) && line.split(/\s+/).length >= 2;
     });
   }
@@ -465,6 +490,15 @@
       /\b(?:нарушени\w*|аудит\w*|контрол\w*|провер\w*)\b/i,
       /\b(?:одобрени\w*|отказ(?:а|е|ом|у|ы|ать|ано|ан))\b/i
     ]));
+  }
+
+  function findHighStakesActionObject(text) {
+    return firstMatch(text, [
+      /\b(?:поставь|определи|подтверди)\b[^.!?\n]{0,45}\bдиагноз\w*\b/i,
+      /\bодобри\b[^.!?\n]{0,45}\b(?:выдач\w*\s+(?:кредит\w*|займ\w*)|кредит\w*|займ\w*)\b/i,
+      /\bподтверди\b[^.!?\n]{0,45}\bнарушени\w*\s+контрол\w*\b/i,
+      /\bпризнай\b[^.!?\n]{0,45}\bдоговор\w*\s+недействительн\w*\b/i
+    ]);
   }
 
   function evaluateDimensions(normalized, options, contradictions, emptyShell) {
@@ -648,11 +682,12 @@
       addUniqueFinding(issues, contradiction);
     });
 
-    var impossiblePrecisionRanges = findRange(sourceText, [
+    var impossiblePrecision = firstUnnegatedMatch(sourceText, [
       /(?:\b100\s*%|\bсто\s+процентов)\s+[^.!?\n]{0,30}(?:точн\w*|гарантир\w*)/i,
       /\b(?:прогноз\w*|предсказани\w*|оценк\w*|вывод\w*)\b[^.!?\n]{0,30}\bточност\w*\b\s*(?:в\s*)?(?:100\s*%|сто\s+процент\w*)/i,
-      /(?:точн\w*|гарантир\w*)\s+[^.!?\n]{0,30}(?:прогноз\w*|вывод\w*|результат\w*)/i
+      /\b(?:точн\w*|гарантир\w*)\b\s+[^.!?\n]{0,30}(?:прогноз\w*|вывод\w*|результат\w*)/i
     ]);
+    var impossiblePrecisionRanges = impossiblePrecision ? impossiblePrecision.ranges : [];
     if (impossiblePrecisionRanges.length) {
       qualityPenalties += 12;
       addUniqueFinding(issues, makeFinding(
@@ -717,12 +752,14 @@
     }
 
     var humanVerification = findDimension(dimensions, "verification").evidence.some(function (item) {
-      return /ручн\w*\s+провер|специалист\w*|человек\w*/i.test(item.phrase);
+      return /ручн[\p{L}\p{N}_]*\s+провер|специалист[\p{L}\p{N}_]*|человек[\p{L}\p{N}_]*/iu.test(item.phrase);
     });
     var finalDecision = firstMatch(sourceText, [
       /\b(?:вынеси|прими|дай|подтверди|определи|поставь|назначь|одобри|откажи)\b[^.!?\n]{0,60}\b(?:решени\w*|вердикт\w*|приговор\w*|диагноз\w*|лечени\w*|заключени\w*)\b/i
     ]);
-    if (finalDecision && hasHighStakesDomain(sourceText) && !humanVerification) {
+    var highStakesActionObject = findHighStakesActionObject(sourceText);
+    var highStakesFinal = highStakesActionObject || finalDecision && hasHighStakesDomain(sourceText);
+    if (highStakesFinal && !humanVerification) {
       safetyPenalty += 55;
       addUniqueFinding(risks, makeFinding(
         "final-decision-without-human",
@@ -730,7 +767,7 @@
         "Окончательное решение без участия человека",
         "Высокозначимый вывод нельзя передавать модели без обязательной проверки специалистом.",
         "Попросите подготовить материалы и отметить основания для решения человека.",
-        finalDecision.ranges
+        highStakesActionObject ? highStakesActionObject.ranges : finalDecision.ranges
       ));
     }
 
