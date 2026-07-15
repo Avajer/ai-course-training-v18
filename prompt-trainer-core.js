@@ -1,6 +1,10 @@
 (function (root, factory) {
   "use strict";
-  root.PromptTrainer = factory();
+  var trainer = factory();
+  root.PromptTrainer = trainer;
+  if (typeof module !== "undefined" && module && module.exports) {
+    module.exports = trainer;
+  }
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
 
