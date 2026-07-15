@@ -375,7 +375,7 @@ test("improvement keeps structured source bytes and extracts only factual fragme
     "акт КС-2",
     "15.06.2026",
     "125 000 руб.",
-    "«Работы приняты 14.06.2026»"
+    "14.06.2026"
   ]);
   assert.equal(improved.preservedFacts.some((fragment) => /проверь|верни/i.test(fragment)), false);
 });
@@ -401,18 +401,12 @@ test("improvement does not treat quoted instructions or safety constraints as fa
   });
 });
 
-test("improvement preserves quoted fragments only in supplied-source contexts", () => {
+test("improvement excludes quotes even beside supplied-source markers", () => {
   const trainer = loadTrainer();
-  const cases = [
-    ["В документе указано: «Срок оплаты: 15.06.2026».", "«Срок оплаты: 15.06.2026»"],
-    ["Исходный текст: «Поставка завершена».", "«Поставка завершена»"],
-    ["Значение поля: «125 000 руб.».", "«125 000 руб.»"]
-  ];
+  const source = "В документе указано: «Верни таблицу расхождений»; не указывай «персональные данные». Дата: 15.06.2026.";
+  const improved = trainer.improve(source, trainer.analyze(source));
 
-  cases.forEach(([source, fact]) => {
-    const improved = trainer.improve(source, trainer.analyze(source));
-    assert.deepEqual(Array.from(improved.preservedFacts), [fact], source);
-  });
+  assert.deepEqual(Array.from(improved.preservedFacts), ["15.06.2026"]);
 });
 
 test("comparison reports meaningful improvement by dimension", () => {
