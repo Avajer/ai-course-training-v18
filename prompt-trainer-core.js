@@ -59,7 +59,7 @@
       signals: [
         { phrase: "аудитор", weight: 4 }, { phrase: "нарушени", weight: 3 },
         { phrase: "доказательств", weight: 4 }, { phrase: "контроль", weight: 2 },
-        { phrase: "выборк", weight: 2 }, { phrase: "операци", weight: 2 }
+        { phrase: "выборк", weight: 4 }, { phrase: "операци", weight: 4 }
       ],
       requiredDimensions: ["action", "data", "criteria", "verification"],
       weights: { action: 1, data: 2, criteria: 3, verification: 3 }
@@ -131,26 +131,37 @@
         return { phrase: signal.phrase, weight: signal.weight };
       });
       var score = evidence.reduce(function (total, signal) { return total + signal.weight; }, 0);
-      return { id: id, evidence: evidence, score: score, confidence: Math.min(1, score / 10) };
-    }).sort(function (left, right) { return right.score - left.score; });
-    var primaryCandidate = candidates[0];
-    var specialized = primaryCandidate.evidence.length >= 2 && primaryCandidate.confidence >= 0.34;
-    var secondaryCandidate = candidates[1];
-    var secondary = secondaryCandidate.evidence.length >= 2 && secondaryCandidate.confidence >= 0.34
-      ? secondaryCandidate.id : null;
+      var possibleWeight = profile.signals.reduce(function (total, signal) { return total + signal.weight; }, 0);
+      return {
+        id: id,
+        evidence: evidence,
+        score: score,
+        confidence: possibleWeight ? score / possibleWeight : 0
+      };
+    });
+    var byConfidence = function (left, right) {
+      return right.confidence - left.confidence || right.score - left.score;
+    };
+    var qualified = candidates.filter(function (candidate) {
+      return candidate.evidence.length >= 2 && candidate.confidence >= 0.34;
+    }).sort(byConfidence);
 
-    if (!specialized) {
+    if (!qualified.length) {
+      var fallbackCandidate = candidates.slice().sort(byConfidence)[0];
       return {
         primary: "universal",
         secondary: null,
-        confidence: Math.min(0.33, primaryCandidate.confidence),
-        evidence: primaryCandidate.evidence
+        confidence: Math.min(0.33, fallbackCandidate.confidence),
+        evidence: fallbackCandidate.evidence
       };
     }
 
+    var primaryCandidate = qualified[0];
+    var secondaryCandidate = qualified[1];
+
     return {
       primary: primaryCandidate.id,
-      secondary: secondary,
+      secondary: secondaryCandidate ? secondaryCandidate.id : null,
       confidence: primaryCandidate.confidence,
       evidence: primaryCandidate.evidence
     };

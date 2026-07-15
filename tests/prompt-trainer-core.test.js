@@ -77,6 +77,25 @@ test("classifies audit and construction tasks", () => {
   assert.ok(construction.classification.evidence.length >= 2);
 });
 
+test("prefers a valid audit profile over a tied one-signal letter profile", () => {
+  const trainer = loadTrainer();
+  const classification = trainer.classify(trainer.normalize("Подготовь письмо: проверь выборку операций"));
+
+  assert.equal(classification.primary, "audit");
+  assert.deepEqual(Array.from(classification.evidence, (item) => item.phrase), ["выборк", "операци"]);
+});
+
+test("normalizes weak audit evidence by the profile signal total", () => {
+  const trainer = loadTrainer();
+  const classification = trainer.classify(trainer.normalize("Проверь контроль операций."));
+  const totalWeight = Array.from(trainer.PROFILES.audit.signals)
+    .reduce((sum, signal) => sum + signal.weight, 0);
+
+  assert.equal(classification.primary, "universal");
+  assert.equal(classification.confidence, 6 / totalWeight);
+  assert.ok(classification.confidence < 0.34);
+});
+
 test("uses universal profile when specialized evidence is insufficient", () => {
   const trainer = loadTrainer();
   const classification = trainer.classify(trainer.normalize("Проверь документ."));
