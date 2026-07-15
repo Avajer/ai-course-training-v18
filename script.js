@@ -84,7 +84,7 @@ function initTheme() {
   });
 }
 const RESULTS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzf89xEzwWUKKXtUMR9tBc4Lb34T2q9Ml5tJ371UOIYGpH1KLFtFML_hdIwpginJ3OV/exec";
-const COURSE_BUILD = "v68";
+const COURSE_BUILD = "v69";
 
 // Структурные подразделения для регистрации (выпадающий список + «Другое»).
 const DEPARTMENTS = [
@@ -3714,11 +3714,13 @@ function renderAccountStatus() {
   `;
   const accountChip = document.getElementById("accountChip");
   const accountMenuPanel = document.getElementById("accountMenuPanel");
-  accountChip?.addEventListener("click", () => {
-    const nextOpen = accountMenuPanel?.hidden !== false;
-    if (accountMenuPanel) accountMenuPanel.hidden = !nextOpen;
-    accountChip.setAttribute("aria-expanded", String(nextOpen));
-  });
+  if (accountMenuPanel) {
+    accountChip?.addEventListener("click", () => {
+      const nextOpen = accountMenuPanel.hidden;
+      accountMenuPanel.hidden = !nextOpen;
+      accountChip.setAttribute("aria-expanded", String(nextOpen));
+    });
+  }
   document.getElementById("logoutButtonTop")?.addEventListener("click", logoutParticipant);
   if (!loggedIn) {
     accountChip?.addEventListener("click", () => {

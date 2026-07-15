@@ -60,6 +60,17 @@
   margin: 0;
 }
 
+.hero-topbar .account-menu {
+  display: grid;
+  justify-items: end;
+}
+
+.hero-topbar .account-popover {
+  position: static;
+  width: min(100%, 28rem);
+  margin-top: 0.55rem;
+}
+
 .hero-video-cover {
   position: relative;
   isolation: isolate;
@@ -320,6 +331,7 @@
   .course-cycle { padding: 0.65rem; }
   .hero-topbar { flex-direction: column; gap: 0.8rem; }
   .hero-topbar .account-status--hero { width: 100%; max-width: none; }
+  .hero-topbar .account-menu, .hero-topbar .account-popover { width: 100%; }
   .brand-logo-host--hero .brand-logo__system { width: 3.3rem; height: 3.3rem; }
   .brand-logo-host--hero .brand-logo__copy strong { font-size: 1.02rem; }
   .hero-video-cover { aspect-ratio: 16 / 9; max-height: 220px; margin: 0.8rem 0 1.1rem; border-radius: 12px; }

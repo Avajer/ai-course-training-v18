@@ -93,6 +93,8 @@
   --font-mono: "JetBrains Mono", Menlo, monospace;
 }
 
+[hidden] { display: none !important; }
+
 /* ---------- Тёмная тема ---------- */
 
 [data-theme="dark"] {
