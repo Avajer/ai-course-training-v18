@@ -667,22 +667,57 @@
     return "[" + labels[dimensionId] + " для профиля «" + profile.name + "»]";
   }
 
+  function isInsideRange(index, ranges) {
+    return ranges.some(function (range) { return index >= range.start && index < range.end; });
+  }
+
+  function collectFactualFragments(source) {
+    var facts = [];
+    var quotedRanges = [];
+    var quotePattern = /«[^»\r\n]+»/g;
+    var match;
+    while ((match = quotePattern.exec(source))) {
+      quotedRanges.push({ start: match.index, end: match.index + match[0].length });
+      facts.push({ phrase: match[0], start: match.index });
+    }
+    var addMatches = function (pattern, captureIndex) {
+      collectIdentifierMatches(source, pattern, captureIndex).forEach(function (evidence) {
+        var range = evidence.ranges[0];
+        if (!isInsideRange(range.start, quotedRanges)) facts.push({ phrase: evidence.phrase, start: range.start });
+      });
+    };
+    [
+      [/(?:^|[^\p{L}\p{N}_])((?:акт|договор|отчет|смета|приложение|письмо|счет|накладная)\s+(?:№\s*)?[A-Za-zА-Яа-яЁё]+\s*[-–]?\s*\d+(?:[-/]\d+)?)(?=$|[^\p{L}\p{N}_])/giu, 1],
+      [/(?:^|[^\p{L}\p{N}_])((?:КС|ОС|СМР)-\d+)(?=$|[^\p{L}\p{N}_])/giu, 1],
+      [/(?:^|[^\p{L}\p{N}_])(\d{1,2}\.\d{1,2}\.\d{4})(?=$|[^\p{L}\p{N}_])/gu, 1],
+      [/(?:^|[^\p{L}\p{N}_])(\d{1,3}(?:[ \u00a0]\d{3})*(?:[,.]\d{2})?\s*(?:руб\.?|₽|долл[\p{L}\p{N}_]*|евро))(?=$|[^\p{L}\p{N}_])/giu, 1]
+    ].forEach(function (definition) {
+      addMatches(definition[0], definition[1]);
+    });
+    facts.sort(function (left, right) { return left.start - right.start || right.phrase.length - left.phrase.length; });
+    return facts.filter(function (fact, index) {
+      return !facts.slice(0, index).some(function (previous) {
+        return fact.start >= previous.start && fact.start < previous.start + previous.phrase.length;
+      });
+    }).map(function (fact) { return fact.phrase; });
+  }
+
   function improve(text, analysis, options) {
-    var normalized = normalize(text);
-    var effectiveAnalysis = analysis && analysis.dimensions && analysis.profile ? analysis : analyze(normalized.original, options);
+    var source = text === undefined || text === null ? "" : String(text);
+    var effectiveAnalysis = analysis && analysis.dimensions && analysis.profile ? analysis : analyze(source, options);
     var profile = PROFILES[effectiveAnalysis.profile];
     var insertedFields = profile.requiredDimensions.filter(function (id) {
       return findDimension(effectiveAnalysis.dimensions, id).score < 45;
     }).map(function (id) {
       return missingField(profile, id);
     });
-    var preservedFacts = normalized.sections.length ? normalized.sections.slice() : normalized.original ? [normalized.original] : [];
+    var preservedFacts = collectFactualFragments(source);
     var fieldsText = insertedFields.length
       ? "\n\nПоля для заполнения:\n" + insertedFields.map(function (field) { return "- " + field; }).join("\n")
       : "";
     return {
-      concise: normalized.original + fieldsText,
-      full: "Исходная задача:\n" + normalized.original + fieldsText,
+      concise: source + fieldsText,
+      full: "Исходная задача:\n" + source + fieldsText,
       insertedFields: insertedFields,
       preservedFacts: preservedFacts
     };

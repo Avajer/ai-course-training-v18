@@ -364,6 +364,30 @@ test("improvement preserves facts and marks unknown data", () => {
   assert.doesNotMatch(improved.full, /точно установлено|нарушение подтверждено/i);
 });
 
+test("improvement keeps structured source bytes and extracts only factual fragments", () => {
+  const trainer = loadTrainer();
+  const source = "\r\n  Проверь акт КС-2\r\n\r\nДата: 15.06.2026\r\nСумма: 125 000 руб.\r\nСтрока источника: «Работы приняты 14.06.2026»\r\n  Верни таблицу расхождений.\r\n";
+  const improved = trainer.improve(source, trainer.analyze(source, { profile: "construction" }));
+  const sourceStart = "Исходная задача:\n".length;
+
+  assert.equal(improved.full.slice(sourceStart, sourceStart + source.length), source);
+  assert.deepEqual(Array.from(improved.preservedFacts), [
+    "акт КС-2",
+    "15.06.2026",
+    "125 000 руб.",
+    "«Работы приняты 14.06.2026»"
+  ]);
+  assert.equal(improved.preservedFacts.some((fragment) => /проверь|верни/i.test(fragment)), false);
+});
+
+test("improvement returns no preserved facts for instruction-only source", () => {
+  const trainer = loadTrainer();
+  const source = "  Сначала проверь документ.\r\n\r\n  Верни таблицу.\r\n";
+  const improved = trainer.improve(source, trainer.analyze(source, { profile: "document" }));
+
+  assert.deepEqual(Array.from(improved.preservedFacts), []);
+});
+
 test("comparison reports meaningful improvement by dimension", () => {
   const trainer = loadTrainer();
   const before = trainer.analyze("Проверь отчет.");
