@@ -172,3 +172,99 @@ test("task overload is explained as a quality penalty", () => {
 
   assert.ok(result.issues.some((issue) => issue.id === "task-overload"));
 });
+
+test("medical, legal, financial, and control final decisions require a human", () => {
+  const trainer = loadTrainer();
+  const prompts = [
+    "Поставь окончательный диагноз пациенту по анкете.",
+    "Прими окончательное правовое решение по иску.",
+    "Вынеси окончательное финансовое решение о выдаче кредита.",
+    "Подтверди окончательное решение о нарушении контроля."
+  ];
+
+  prompts.forEach((prompt) => {
+    const result = trainer.analyze(prompt);
+    const risk = result.risks.find((item) => item.id === "final-decision-without-human");
+
+    assert.equal(risk?.severity, "critical", prompt);
+    assert.ok(result.safetyScore < 60, prompt);
+  });
+});
+
+test("detects payment cards, passport, SNILS, and INN identifiers locally", () => {
+  const trainer = loadTrainer();
+  const prompts = [
+    "Карта для оплаты: 4111 1111 1111 1111.",
+    "Паспорт: 45 08 123456.",
+    "СНИЛС: 112-233-445 95.",
+    "ИНН: 7707083893."
+  ];
+
+  prompts.forEach((prompt) => {
+    const result = trainer.analyze(prompt);
+    assert.ok(result.risks.some((item) => item.id === "sensitive-identifiers"), prompt);
+  });
+});
+
+test("does not treat an invalid long order number as a payment card", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Номер заказа: 1234 5678 9012 3456.");
+
+  assert.equal(result.risks.some((item) => item.id === "sensitive-identifiers"), false);
+});
+
+test("catches impossible precision in natural word order", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Дай прогноз с точностью 100%.");
+
+  assert.ok(result.issues.some((item) => item.id === "impossible-precision"));
+});
+
+test("catches fabricated sources after the source request", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Укажи источники, даже если придется придумать.");
+
+  assert.ok(result.issues.some((item) => item.id === "fabricated-sources"));
+  assert.ok(result.risks.some((item) => item.id === "fabricated-sources"));
+});
+
+test("does not treat refusal resilience as a high-stakes refusal", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Прими окончательное решение по отказоустойчивости системы.");
+
+  assert.equal(result.risks.some((item) => item.id === "final-decision-without-human"), false);
+});
+
+test("does not treat a non-detailed adjective as a detailed requirement", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Отчет может быть неподробным и состоять из одного предложения.");
+
+  assert.equal(result.contradictions.length, 0);
+});
+
+test("multiline references without payload stay unresolved", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("По данным ниже:\nПодготовь отчет.");
+
+  assert.ok(result.issues.some((item) => item.id === "unresolved-reference"));
+});
+
+test("structured payloads and placeholders resolve multiline references", () => {
+  const trainer = loadTrainer();
+  const prompts = [
+    "По данным ниже:\nСумма: 1200\nПодготовь отчет.",
+    "По данным ниже:\n[таблица операций]\nПодготовь отчет."
+  ];
+
+  prompts.forEach((prompt) => {
+    const result = trainer.analyze(prompt);
+    assert.equal(result.issues.some((item) => item.id === "unresolved-reference"), false, prompt);
+  });
+});
+
+test("yes-or-no-only answer conflicts with detailed justification", () => {
+  const trainer = loadTrainer();
+  const result = trainer.analyze("Ответь только «да» или «нет», но дай подробное обоснование.");
+
+  assert.ok(result.contradictions.some((item) => item.id === "detail-vs-binary-answer"));
+});

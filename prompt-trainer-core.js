@@ -186,12 +186,12 @@
     for (var index = 0; index < source.length; index += 1) {
       var character = source.charAt(index);
       var next = source.charAt(index + 1);
-      if (character === "\\" && next === "b") {
+      if (!inCharacterClass && character === "\\" && next === "b") {
         index += 1;
         continue;
       }
       if (character === "\\" && next === "w") {
-        compiled += inCharacterClass ? "a-zа-яё0-9_" : "[a-zа-яё0-9_]";
+        compiled += inCharacterClass ? "\\p{L}\\p{N}_" : "[\\p{L}\\p{N}_]";
         index += 1;
         continue;
       }
@@ -199,14 +199,38 @@
       if (character === "]" && source.charAt(index - 1) !== "\\") inCharacterClass = false;
       compiled += character;
     }
-    return new RegExp(compiled, pattern.flags);
+    var flags = pattern.flags;
+    if (flags.indexOf("u") === -1) flags += "u";
+    if (flags.indexOf("g") === -1) flags += "g";
+    return {
+      expression: new RegExp(compiled, flags),
+      startsAtBoundary: source.slice(0, 2) === "\\b",
+      endsAtBoundary: source.slice(-2) === "\\b"
+    };
+  }
+
+  function isTokenCharacter(character) {
+    return Boolean(character) && /^[\p{L}\p{N}_]$/u.test(character);
+  }
+
+  function hasTokenBoundary(text, index) {
+    return isTokenCharacter(text.charAt(index - 1)) !== isTokenCharacter(text.charAt(index));
+  }
+
+  function findNextMatch(text, compiled) {
+    var match;
+    while ((match = compiled.expression.exec(text))) {
+      var startsCorrectly = !compiled.startsAtBoundary || hasTokenBoundary(text, match.index);
+      var endsCorrectly = !compiled.endsAtBoundary || hasTokenBoundary(text, match.index + match[0].length);
+      if (startsCorrectly && endsCorrectly) return match;
+      if (!match[0].length) compiled.expression.lastIndex += 1;
+    }
+    return null;
   }
 
   function firstMatch(text, patterns) {
     for (var index = 0; index < patterns.length; index += 1) {
-      var pattern = compileRussianPattern(patterns[index]);
-      pattern.lastIndex = 0;
-      var match = pattern.exec(text);
+      var match = findNextMatch(text, compileRussianPattern(patterns[index]));
       if (match) {
         return {
           phrase: match[0],
@@ -215,6 +239,97 @@
       }
     }
     return null;
+  }
+
+  function appendEvidence(target, evidence) {
+    if (!target.some(function (item) {
+      return item.ranges[0] && evidence.ranges[0]
+        && item.ranges[0].start === evidence.ranges[0].start
+        && item.ranges[0].end === evidence.ranges[0].end;
+    })) target.push(evidence);
+  }
+
+  function collectIdentifierMatches(text, pattern, captureIndex, validator) {
+    var evidence = [];
+    var match;
+    while ((match = pattern.exec(text))) {
+      var phrase = match[captureIndex] || match[0];
+      if (validator && !validator(phrase)) continue;
+      var start = match.index + match[0].indexOf(phrase);
+      appendEvidence(evidence, { phrase: phrase, ranges: [{ start: start, end: start + phrase.length }] });
+    }
+    return evidence;
+  }
+
+  function isLuhnValid(value) {
+    var digits = value.replace(/\D/g, "");
+    if (digits.length < 13 || digits.length > 19) return false;
+    var sum = 0;
+    var shouldDouble = false;
+    for (var index = digits.length - 1; index >= 0; index -= 1) {
+      var digit = Number(digits.charAt(index));
+      if (shouldDouble) digit = digit > 4 ? digit * 2 - 9 : digit * 2;
+      sum += digit;
+      shouldDouble = !shouldDouble;
+    }
+    return sum % 10 === 0;
+  }
+
+  function isValidSnils(value) {
+    var digits = value.replace(/\D/g, "");
+    if (digits.length !== 11) return false;
+    var sum = 0;
+    for (var index = 0; index < 9; index += 1) sum += Number(digits.charAt(index)) * (9 - index);
+    var check = sum < 100 ? sum : sum === 100 || sum === 101 ? 0 : sum % 101;
+    return check === Number(digits.slice(9));
+  }
+
+  function innCheckDigit(digits, weights) {
+    var total = 0;
+    weights.forEach(function (weight, index) { total += Number(digits.charAt(index)) * weight; });
+    return total % 11 % 10;
+  }
+
+  function isValidInn(value) {
+    var digits = value.replace(/\D/g, "");
+    if (digits.length === 10) return innCheckDigit(digits, [2, 4, 10, 3, 5, 9, 4, 6, 8]) === Number(digits.charAt(9));
+    if (digits.length === 12) {
+      return innCheckDigit(digits, [7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === Number(digits.charAt(10))
+        && innCheckDigit(digits, [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === Number(digits.charAt(11));
+    }
+    return false;
+  }
+
+  function collectIdentifierEvidence(text) {
+    var evidence = collectSignals(text, [
+      [/\b[\w.+-]+@[\w.-]+\.[a-zа-я]{2,}\b/i],
+      [/(?:\+7|8)[\s()-]*\d{3}[\s()-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}/i]
+    ]);
+    var cardEvidence = collectIdentifierMatches(
+      text,
+      /(?:^|[^\p{L}\p{N}])((?:\d[ -]?){12,18}\d)(?=$|[^\p{L}\p{N}])/gu,
+      1,
+      isLuhnValid
+    );
+    var passportEvidence = collectIdentifierMatches(
+      text,
+      /(?:^|[^\p{L}\p{N}])((?:\d{2}[ -]){2}\d{6})(?=$|[^\p{L}\p{N}])/gu,
+      1
+    );
+    var snilsEvidence = collectIdentifierMatches(
+      text,
+      /(?:^|[^\p{L}\p{N}])(\d{3}-\d{3}-\d{3}[ -]?\d{2})(?=$|[^\p{L}\p{N}])/gu,
+      1,
+      isValidSnils
+    );
+    var innEvidence = collectIdentifierMatches(
+      text,
+      /(?:^|[^\p{L}\p{N}])инн\s*[:№#-]?\s*(\d{10}|\d{12})(?!\d)/giu,
+      1,
+      isValidInn
+    );
+    cardEvidence.concat(passportEvidence, snilsEvidence, innEvidence).forEach(function (item) { appendEvidence(evidence, item); });
+    return evidence;
   }
 
   function collectSignals(text, groups) {
@@ -291,6 +406,8 @@
     var contradictions = [];
     var detailed = firstMatch(text, [/\b(?:максимально\s+)?подробн\w*\b/i, /\bразвернут\w*\b/i]);
     var oneSentence = firstMatch(text, [/\b(?:одного|одним)\s+предложени\w*\b/i]);
+    var binaryOnly = firstMatch(text, [/\b(?:только|лишь)\s+(?:[«"]?да[»"]?\s+или\s+[«"]?нет[»"]?|да\s*\/\s*нет|yes\s*\/\s*no)(?=[^\p{L}\p{N}_]|$)/i]);
+    var brief = firstMatch(text, [/\b(?:кратк\w*|лаконичн\w*|без\s+объяснен\w*)\b/i]);
     if (detailed && oneSentence) {
       contradictions.push(makeFinding(
         "detail-vs-one-sentence",
@@ -301,7 +418,53 @@
         detailed.ranges.concat(oneSentence.ranges)
       ));
     }
+    if (detailed && binaryOnly) {
+      contradictions.push(makeFinding(
+        "detail-vs-binary-answer",
+        "warning",
+        "Противоречивый формат ответа",
+        "Ответ только «да» или «нет» не позволяет дать подробное обоснование.",
+        "Выберите краткий бинарный ответ или разрешите отдельное обоснование.",
+        detailed.ranges.concat(binaryOnly.ranges)
+      ));
+    } else if (detailed && brief && !oneSentence) {
+      contradictions.push(makeFinding(
+        "detail-vs-brief-answer",
+        "warning",
+        "Противоречивая детализация ответа",
+        "Требование подробного ответа конфликтует с требованием краткости.",
+        "Укажите, что важнее: полнота обоснования или краткость результата.",
+        detailed.ranges.concat(brief.ranges)
+      ));
+    }
     return contradictions;
+  }
+
+  function isInstructionLine(line) {
+    return /^(?:подготовь|составь|верни|выведи|оформи|проверь|сверь|сравни|проанализируй|дай)\s/i.test(line);
+  }
+
+  function hasReferencePayload(text, referenceRange) {
+    var content = text.slice(referenceRange.end).replace(/^[\s:—-]+/, "");
+    if (!content) return false;
+    var lines = content.split("\n").map(function (line) { return line.trim(); }).filter(Boolean);
+    return lines.some(function (line) {
+      if (/^\[[^\]\n]{3,}\]$/.test(line)) return true;
+      if (isInstructionLine(line)) return false;
+      return /^[^:\n]{1,40}:\s*\S+/.test(line)
+        || /[|;]/.test(line)
+        || /\d/.test(line) && line.split(/\s+/).length >= 2;
+    });
+  }
+
+  function hasHighStakesDomain(text) {
+    return Boolean(firstMatch(text, [
+      /\b(?:диагноз\w*|пациент\w*|лечени\w*|медицин\w*|терапи\w*)\b/i,
+      /\b(?:правов\w*|судебн\w*|иск\w*|юридическ\w*)\b/i,
+      /\b(?:финансов\w*|кредит\w*|займ\w*|налог\w*|платеж\w*)\b/i,
+      /\b(?:нарушени\w*|аудит\w*|контрол\w*|провер\w*)\b/i,
+      /\b(?:одобрени\w*|отказ(?:а|е|ом|у|ы|ать|ано|ан))\b/i
+    ]));
   }
 
   function evaluateDimensions(normalized, options, contradictions, emptyShell) {
@@ -355,11 +518,7 @@
     var privacyEvidence = collectSignals(text, [
       [/\b(?:не\s+передавай|обезлич\w*|не\s+указывай\s+персональн\w*|скрой\s+идентификатор\w*)\b/i]
     ]);
-    var identifierEvidence = collectSignals(text, [
-      [/\b[\w.+-]+@[\w.-]+\.[a-zа-я]{2,}\b/i],
-      [/(?:\+7|8)[\s()-]*\d{3}[\s()-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}/i],
-      [/\b\d{4}\s?\d{6}\b/]
-    ]);
+    var identifierEvidence = collectIdentifierEvidence(text);
     var sensitiveDataType = options && (options.dataType === "personal" || options.dataType === "sensitive");
     var privacyScore = 100;
     if (sensitiveDataType && !privacyEvidence.length) privacyScore = 55;
@@ -421,9 +580,8 @@
     var compiled = compileRussianPattern(pattern);
     var count = 0;
     var match;
-    while ((match = compiled.exec(text))) {
+    while ((match = findNextMatch(text, compiled))) {
       count += 1;
-      if (!match[0].length) compiled.lastIndex += 1;
     }
     return count;
   }
@@ -492,6 +650,7 @@
 
     var impossiblePrecisionRanges = findRange(sourceText, [
       /(?:\b100\s*%|\bсто\s+процентов)\s+[^.!?\n]{0,30}(?:точн\w*|гарантир\w*)/i,
+      /\b(?:прогноз\w*|предсказани\w*|оценк\w*|вывод\w*)\b[^.!?\n]{0,30}\bточност\w*\b\s*(?:в\s*)?(?:100\s*%|сто\s+процент\w*)/i,
       /(?:точн\w*|гарантир\w*)\s+[^.!?\n]{0,30}(?:прогноз\w*|вывод\w*|результат\w*)/i
     ]);
     if (impossiblePrecisionRanges.length) {
@@ -507,7 +666,8 @@
     }
 
     var fabricatedRanges = findRange(sourceText, [
-      /\b(?:придумай|сфабрикуй|выдумай)\b[^.!?\n]{0,40}\b(?:источник\w*|ссылк\w*|цитат\w*|факт\w*|данн\w*)\b/i
+      /\b(?:придумай|сфабрикуй|выдумай)\b[^.!?\n]{0,40}\b(?:источник\w*|ссылк\w*|цитат\w*|факт\w*|данн\w*)\b/i,
+      /\b(?:источник\w*|ссылк\w*|цитат\w*|факт\w*|данн\w*)\b[^.!?\n]{0,60}\b(?:придумать|придумай|выдумать|выдумай|сфабриковать|сфабрикуй)\b/i
     ]);
     if (fabricatedRanges.length) {
       qualityPenalties += 20;
@@ -543,8 +703,8 @@
       ));
     }
 
-    var unresolvedRanges = findRange(sourceText, [/\b(?:сделай\s+это|как\s+выше|эти\s+данные|данн\w*\s+ниже)\b/i]);
-    if (unresolvedRanges.length && normalized.sections.length < 2) {
+    var unresolvedReference = firstMatch(sourceText, [/\b(?:сделай\s+это|как\s+выше|эти\s+данные|данн\w*\s+ниже)\b/i]);
+    if (unresolvedReference && !hasReferencePayload(normalized.original, unresolvedReference.ranges[0])) {
       qualityPenalties += 10;
       addUniqueFinding(issues, makeFinding(
         "unresolved-reference",
@@ -552,18 +712,17 @@
         "Ссылка на отсутствующий материал",
         "Запрос ссылается на данные или указания, которых в нем нет.",
         "Добавьте материал в запрос или укажите точный источник.",
-        unresolvedRanges
+        unresolvedReference.ranges
       ));
     }
 
     var humanVerification = findDimension(dimensions, "verification").evidence.some(function (item) {
       return /ручн\w*\s+провер|специалист\w*|человек\w*/i.test(item.phrase);
     });
-    var finalDecisionRanges = findRange(sourceText, [
-      /\b(?:вынеси|прими|дай)\b[^.!?\n]{0,60}\b(?:окончательн\w*\s+решени\w*|вердикт\w*|приговор\w*)\b/i
+    var finalDecision = firstMatch(sourceText, [
+      /\b(?:вынеси|прими|дай|подтверди|определи|поставь|назначь|одобри|откажи)\b[^.!?\n]{0,60}\b(?:решени\w*|вердикт\w*|приговор\w*|диагноз\w*|лечени\w*|заключени\w*)\b/i
     ]);
-    var highStakes = Boolean(firstMatch(sourceText, [/\b(?:нарушени\w*|правов\w*|финансов\w*|медицин\w*|одобрени\w*|отказ\w*)\b/i]));
-    if (finalDecisionRanges.length && highStakes && !humanVerification) {
+    if (finalDecision && hasHighStakesDomain(sourceText) && !humanVerification) {
       safetyPenalty += 55;
       addUniqueFinding(risks, makeFinding(
         "final-decision-without-human",
@@ -571,7 +730,7 @@
         "Окончательное решение без участия человека",
         "Высокозначимый вывод нельзя передавать модели без обязательной проверки специалистом.",
         "Попросите подготовить материалы и отметить основания для решения человека.",
-        finalDecisionRanges
+        finalDecision.ranges
       ));
     }
 
