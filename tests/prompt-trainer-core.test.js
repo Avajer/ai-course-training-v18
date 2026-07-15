@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import cases from "./fixtures/prompt-trainer-cases.js";
 
 function loadTrainer() {
   const source = fs.readFileSync(new URL("../prompt-trainer-core.js", import.meta.url), "utf8");
@@ -18,6 +19,31 @@ function loadCommonJsTrainer() {
   vm.runInNewContext(source, sandbox);
   return sandbox.module.exports;
 }
+
+test("professional fixture bank stays inside expected ranges", () => {
+  const trainer = loadTrainer();
+
+  assert.ok(cases.length >= 60, "fixture bank must contain at least 60 cases");
+  cases.forEach((fixture) => {
+    const result = trainer.analyze(fixture.text, fixture.options);
+
+    assert.equal(result.profile, fixture.profile, fixture.id + ": profile");
+    assert.ok(
+      result.qualityScore >= fixture.minQuality && result.qualityScore <= fixture.maxQuality,
+      fixture.id + ": quality"
+    );
+    assert.ok(
+      result.safetyScore >= fixture.minSafety && result.safetyScore <= fixture.maxSafety,
+      fixture.id + ": safety"
+    );
+    fixture.requiredIssues.forEach((id) => {
+      assert.ok(result.issues.concat(result.risks).some((item) => item.id === id), fixture.id + ": " + id);
+    });
+    fixture.forbiddenIssues.forEach((id) => {
+      assert.equal(result.issues.concat(result.risks).some((item) => item.id === id), false, fixture.id + ": " + id);
+    });
+  });
+});
 
 test("exports the trainer through CommonJS and window APIs", () => {
   const trainer = loadCommonJsTrainer();

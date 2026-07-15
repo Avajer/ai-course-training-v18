@@ -57,7 +57,7 @@
     audit: {
       name: "Аудит и контроль",
       signals: [
-        { phrase: "аудитор", weight: 4 }, { phrase: "нарушени", weight: 3 },
+        { phrase: "аудит", weight: 4 }, { phrase: "нарушени", weight: 3 },
         { phrase: "доказательств", weight: 4 }, { phrase: "контроль", weight: 2 },
         { phrase: "выборк", weight: 4 }, { phrase: "операци", weight: 4 }
       ],
@@ -501,6 +501,15 @@
     ]);
   }
 
+  function findUsableHumanReview(text) {
+    var review = firstMatch(text, [
+      /\b(?:ручн\w*\s+провер\w*|передай[^.!?\n]{0,30}специалист\w*|провер\w*\s+человек\w*)\b/i
+    ]);
+    if (!review) return null;
+    var preceding = text.slice(Math.max(0, review.ranges[0].start - 30), review.ranges[0].start);
+    return /(?:без|исключая|вместо)\s*$/i.test(preceding) ? null : review;
+  }
+
   function evaluateDimensions(normalized, options, contradictions, emptyShell) {
     var text = normalized.original.toLowerCase();
     var definitions = {};
@@ -516,19 +525,19 @@
     var purposeEvidence = collectSignals(text, [
       [/\bдля\s+(?:руковод\w*|клиент\w*|команд\w*|отдел\w*|заказчик\w*|сотрудник\w*)\b/i],
       [/\b(?:цель|чтобы|для\s+принятия|для\s+подготовки|помоги)\b/i],
-      [/\b(?:в\s+рамках|по\s+проекту|по\s+договору|за\s+период)\b/i]
+      [/\b(?:в\s+рамках|по\s+проекту|по\s+договору|за\s+период|для\s+внутренн\w*\s+(?:аудит\w*|контрол\w*)|для\s+аналитик\w*)\b/i]
     ]);
     dimensions.push(makeDimension(definitions.purpose, scoreSignals(purposeEvidence.length), purposeEvidence));
 
     var dataEvidence = collectSignals(text, [
       [/\b(?:приложенн\w*|вложенн\w*|из\s+файла|на\s+основании\s+(?:таблиц\w*|документ\w*|договора))\b/i],
       [/\[[^\]\n]{3,}\]/],
-      [/\b(?:данн\w*\s+ниже|в\s+таблице|в\s+документе|по\s+выборке)\b/i]
+      [/\b(?:данн\w*\s+ниже|в\s+таблице|в\s+документе|по\s+выборке|(?:по|из)\s+(?:приложенн\w*\s+)?(?:таблиц\w*|документ\w*|договора|смет\w*|реестр\w*))\b/i]
     ]);
     dimensions.push(makeDimension(definitions.data, scoreSignals(dataEvidence.length), dataEvidence));
 
     var outputEvidence = collectSignals(text, [
-      [/\b(?:верни|подготовь|составь|выведи|оформи|дай)\b[^.!?\n]{0,50}\b(?:таблиц\w*|спис\w*|отчет\w*|заключени\w*|письм\w*|предложени\w*)\b/i],
+      [/\b(?:верни|подготовь|составь|выведи|оформи|дай)\b[^.!?\n]{0,50}\b(?:таблиц\w*|спис\w*|отчет\w*|заключени\w*|письм\w*|предложени\w*|план\w*|сообщени\w*)\b/i],
       [/\b(?:колонк\w*|раздел\w*|пункт\w*|отдельн\w*\s+спис\w*)\b/i],
       [/\b(?:в\s+одном\s+предложени|краткое\s+резюме|структурированн\w*\s+вид)\b/i]
     ]);
@@ -536,7 +545,7 @@
 
     var criteriaEvidence = collectSignals(text, [
       [/\b(?:критери\w*|правил\w*|требовани\w*|услови\w*|ограничени\w*)\b/i],
-      [/\b(?:дата|сумм\w*|контрагент\w*|срок\w*|пункт\w*|показател\w*|стоимост\w*)\b/i],
+      [/\b(?:дата|сумм\w*|контрагент\w*|срок\w*|пункт\w*|показател\w*|стоимост\w*|регламент\w*|лимит\w*|допуск\w*|объем\w*|гаранти\w*)\b/i],
       [/\b(?:не\s+более|не\s+менее|только|исключи|включи|за\s+период)\b/i]
     ]);
     dimensions.push(makeDimension(definitions.criteria, scoreSignals(criteriaEvidence.length), criteriaEvidence));
@@ -545,9 +554,10 @@
       [/\b(?:сверь|сопоставь|проверь)\b\s+[^.!?\n]{0,40}\b(?:с|по)\b/i],
       [/\b(?:неопределен\w*|недостаточно\s+данных|укажи\s+сомнен\w*)\b/i],
       [/\bне\s+(?:придумывай|выдумывай|добавляй)\s+[^.!?\n]{0,40}\b(?:факт\w*|данн\w*|источник\w*)\b/i],
-      [/\b(?:ручн\w*\s+провер\w*|передай[^.!?\n]{0,30}специалист\w*|провер\w*\s+человек\w*)\b/i],
       [/\b(?:не\s+выноси|не\s+принимай)\s+окончательн\w*\b/i]
     ]);
+    var humanReviewEvidence = findUsableHumanReview(text);
+    if (humanReviewEvidence) verificationEvidence.push(humanReviewEvidence);
     dimensions.push(makeDimension(definitions.verification, scoreSignals(verificationEvidence.length), verificationEvidence));
 
     var privacyEvidence = collectSignals(text, [
@@ -563,14 +573,14 @@
     dimensions.push(makeDimension(definitions.privacy, privacyScore, allPrivacyEvidence));
 
     var nextStepEvidence = collectSignals(text, [
-      [/\b(?:задай\s+(?:уточняющие\s+)?вопрос\w*|укажи[^.!?\n]{0,30}(?:не\s+хватает|нужно\s+уточнить))\b/i],
+      [/\b(?:задай\s+(?:уточняющие\s+)?вопрос\w*|укажи[^.!?\n]{0,30}(?:не\s+хватает|нужно\s+уточнить)|при\s+(?:нехватке|отсутствии)\s+данных\s+(?:задай|укажи)|предложи\s+(?:вопрос|следующ\w*\s+шаг))\b/i],
       [/\b(?:ручн\w*\s+провер\w*|передай[^.!?\n]{0,30}специалист\w*|согласуй[^.!?\n]{0,30}(?:человек\w*|эксперт\w*))\b/i],
       [/\b(?:после\s+проверки|затем\s+(?:предложи|перейди))\b/i]
     ]);
     dimensions.push(makeDimension(definitions.nextStep, scoreSignals(nextStepEvidence.length), nextStepEvidence));
 
     var clarityEvidence = collectSignals(text, [
-      [/\b(?:проанализируй|проверь|сверь|сравни|подготовь|составь|извлеки|выдели|определи|найди|оцени|дай)\b/i],
+      [/\b(?:проанализируй|проверь|сверь|сравни|подготовь|составь|извлеки|выдели|определи|найди|оцени|дай|спланируй|напиши)\b/i],
       [/\b(?:кажд\w*|отдельн\w*|по\s+каждому|с\s+колонками|за\s+период)\b/i],
       [/(?:^|\n)\s*(?:\d+[.)]|[-*])\s+/m]
     ]);
@@ -881,9 +891,7 @@
       ));
     }
 
-    var humanVerification = findDimension(dimensions, "verification").evidence.some(function (item) {
-      return /ручн[\p{L}\p{N}_]*\s+провер|специалист[\p{L}\p{N}_]*|человек[\p{L}\p{N}_]*/iu.test(item.phrase);
-    });
+    var humanVerification = Boolean(findUsableHumanReview(sourceText));
     var finalDecision = firstMatch(sourceText, [
       /\b(?:вынеси|прими|дай|подтверди|определи|поставь|назначь|одобри|откажи)\b[^.!?\n]{0,60}\b(?:решени\w*|вердикт\w*|приговор\w*|диагноз\w*|лечени\w*|заключени\w*)\b/i
     ]);
