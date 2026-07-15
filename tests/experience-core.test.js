@@ -52,6 +52,7 @@ function loadHeroVideoExperience({ reducedMotion = false, playResult, supportsIn
   const windowEvents = new Map();
   const mediaEvents = [];
   const observerInstances = [];
+  const mutationObserverInstances = [];
   const animationFrames = [];
   const video = {
     attributes: new Map(),
@@ -89,7 +90,17 @@ function loadHeroVideoExperience({ reducedMotion = false, playResult, supportsIn
     innerWidth: 1200,
     matchMedia() { return mediaQuery; },
     addEventListener(type, listener) { windowEvents.set(type, listener); },
-    requestAnimationFrame(callback) { animationFrames.push(callback); }
+    requestAnimationFrame(callback) { animationFrames.push(callback); },
+    MutationObserver: class {
+      constructor(callback) {
+        this.callback = callback;
+        mutationObserverInstances.push(this);
+      }
+      observe(target, options) {
+        this.target = target;
+        this.options = options;
+      }
+    }
   };
   if (supportsIntersectionObserver) {
     window.IntersectionObserver = class {
@@ -111,7 +122,9 @@ function loadHeroVideoExperience({ reducedMotion = false, playResult, supportsIn
     flushAnimationFrame() { animationFrames.shift()?.(); },
     mediaEvents,
     mediaQuery,
+    mutationObserver: mutationObserverInstances[0],
     observer: observerInstances[0],
+    hero,
     video,
     windowEvents
   };
@@ -172,6 +185,25 @@ test("без IntersectionObserver проверяет viewport через оди�
   runtime.windowEvents.get("resize")();
   runtime.flushAnimationFrame();
   assert.equal(runtime.video.playCalls, 2);
+});
+
+test("fallback реагирует на hidden courseHero без scroll или resize", () => {
+  const runtime = loadHeroVideoExperience({ supportsIntersectionObserver: false });
+
+  runtime.flushAnimationFrame();
+  assert.equal(runtime.video.playCalls, 1);
+  assert.equal(runtime.mutationObserver.target, runtime.hero);
+  assert.deepEqual(JSON.parse(JSON.stringify(runtime.mutationObserver.options)), {
+    attributes: true,
+    attributeFilter: ["hidden"]
+  });
+
+  runtime.hero.hidden = true;
+  runtime.video.rect = { top: 0, right: 0, bottom: 0, left: 0 };
+  runtime.mutationObserver.callback([{ type: "attributes", attributeName: "hidden" }]);
+  assert.equal(runtime.animationFrames.length, 1);
+  runtime.flushAnimationFrame();
+  assert.equal(runtime.video.pauseCalls, 2);
 });
 
 test("service worker кэширует poster, а видео обслуживает только из сети", () => {

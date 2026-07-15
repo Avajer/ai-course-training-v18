@@ -135,3 +135,56 @@ exit 0
 ### Follow-up Residual Concern
 
 - The fallback is covered in a deterministic DOM harness but has not been manually exercised on a physical browser version old enough to lack IntersectionObserver.
+
+## Final Minor Re-review: Hidden Mutation
+
+Date: 2026-07-15
+
+### Change
+
+- The no-IntersectionObserver fallback now observes `#courseHero` with a MutationObserver limited to the `hidden` attribute.
+- The mutation callback uses the existing `scheduleVisibilityCheck`, so it shares the same pending-frame guard as `scroll` and `resize` and cannot queue an excessive number of checks.
+- The modern IntersectionObserver branch is unchanged and does not create this MutationObserver.
+
+### TDD Evidence
+
+Initial RED run:
+
+```text
+$ node --test tests/experience-core.test.js
+tests 18
+pass 17
+fail 1
+
+failure: fallback did not create a MutationObserver for #courseHero
+```
+
+GREEN run after the fallback change:
+
+```text
+$ node --test tests/experience-core.test.js
+tests 18
+pass 18
+fail 0
+```
+
+The new test starts playback after the initial fallback geometry check, sets `courseHero.hidden = true`, supplies the resulting zero-sized video bounds, invokes the hidden-attribute mutation, and verifies that one rAF check pauses the video without any `scroll` or `resize` event.
+
+### Required Verification
+
+```text
+$ node --check experience.js
+exit 0
+
+$ node --test tests/experience-core.test.js
+tests 18
+pass 18
+fail 0
+
+$ git diff --check
+exit 0
+```
+
+### Final Residual Concern
+
+- The MutationObserver path is covered by the deterministic DOM harness but has not been manually exercised on a physical legacy browser without IntersectionObserver.

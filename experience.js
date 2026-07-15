@@ -76,6 +76,11 @@
       };
       window.addEventListener("scroll", scheduleVisibilityCheck, { passive: true });
       window.addEventListener("resize", scheduleVisibilityCheck);
+      const hero = $("#courseHero");
+      if (hero && "MutationObserver" in window) {
+        const observer = new window.MutationObserver(scheduleVisibilityCheck);
+        observer.observe(hero, { attributes: true, attributeFilter: ["hidden"] });
+      }
       scheduleVisibilityCheck();
     }
 
