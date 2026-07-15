@@ -39,18 +39,34 @@
   function configureHeroVideo() {
     const video = $("#heroIntroVideo");
     if (!video) return;
+    const hero = $("#courseHero");
     const preference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    let heroVisible = !hero || !("IntersectionObserver" in window);
+
     const syncPlayback = () => {
-      if (preference?.matches) {
+      const documentVisible = document.visibilityState === "visible";
+      if (preference?.matches || !documentVisible || !heroVisible) {
         video.pause();
         video.removeAttribute("autoplay");
         return;
       }
       video.setAttribute("autoplay", "");
-      video.play().catch(() => {});
+      const playResult = video.play();
+      if (playResult && typeof playResult.catch === "function") playResult.catch(() => {});
     };
+
+    if (hero && "IntersectionObserver" in window) {
+      const observer = new IntersectionObserver(([entry]) => {
+        heroVisible = entry.isIntersecting;
+        syncPlayback();
+      }, { threshold: 0.01 });
+      observer.observe(hero);
+    }
+
     syncPlayback();
-    preference?.addEventListener?.("change", syncPlayback);
+    document.addEventListener("visibilitychange", syncPlayback);
+    if (preference?.addEventListener) preference.addEventListener("change", syncPlayback);
+    else preference?.addListener?.(syncPlayback);
   }
 
   function renderHeroCycle() {

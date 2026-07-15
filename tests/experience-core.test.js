@@ -46,6 +46,96 @@ test("видеообложка адаптивна и останавливает�
   assert.match(styles, /object-fit:\s*cover/);
 });
 
+function loadHeroVideoExperience({ reducedMotion = false, playResult } = {}) {
+  const experience = fs.readFileSync(new URL("../experience.js", import.meta.url), "utf8");
+  const events = new Map();
+  const mediaEvents = [];
+  const observerInstances = [];
+  const video = {
+    attributes: new Map(),
+    pauseCalls: 0,
+    playCalls: 0,
+    pause() { this.pauseCalls += 1; },
+    play() { this.playCalls += 1; return playResult; },
+    setAttribute(name, value = "") { this.attributes.set(name, value); },
+    removeAttribute(name) { this.attributes.delete(name); }
+  };
+  const hero = {};
+  const mediaQuery = {
+    matches: reducedMotion,
+    addListener(listener) { mediaEvents.push(listener); }
+  };
+  const document = {
+    visibilityState: "visible",
+    querySelector(selector) {
+      if (selector === "#heroIntroVideo") return video;
+      if (selector === "#courseHero") return hero;
+      return null;
+    },
+    querySelectorAll() { return []; },
+    addEventListener(type, listener) { events.set(type, listener); }
+  };
+  const window = {
+    CourseExperienceCore: {},
+    courseExperienceHost: {
+      getExperienceState() { return { panels: {} }; }
+    },
+    document,
+    matchMedia() { return mediaQuery; },
+    IntersectionObserver: class {
+      constructor(callback, options) {
+        this.callback = callback;
+        this.options = options;
+        observerInstances.push(this);
+      }
+      observe(target) { this.target = target; }
+    }
+  };
+  const sandbox = { window, document, IntersectionObserver: window.IntersectionObserver };
+  vm.runInNewContext(experience, sandbox);
+  return { document, events, hero, mediaEvents, mediaQuery, observer: observerInstances[0], video };
+}
+
+test("управляет hero-видео по viewport, visibilitychange и legacy reduced-motion listener", () => {
+  const runtime = loadHeroVideoExperience({ playResult: undefined });
+
+  assert.equal(runtime.video.pauseCalls, 1);
+  assert.equal(runtime.observer.target, runtime.hero);
+  assert.equal(runtime.observer.options.threshold, 0.01);
+  assert.equal(runtime.mediaEvents.length, 1);
+
+  runtime.observer.callback([{ isIntersecting: true }]);
+  assert.equal(runtime.video.playCalls, 1);
+
+  runtime.observer.callback([{ isIntersecting: false }]);
+  assert.equal(runtime.video.pauseCalls, 2);
+
+  runtime.document.visibilityState = "hidden";
+  runtime.events.get("visibilitychange")();
+  assert.equal(runtime.video.pauseCalls, 3);
+
+  runtime.document.visibilityState = "visible";
+  runtime.events.get("visibilitychange")();
+  assert.equal(runtime.video.pauseCalls, 4);
+
+  runtime.observer.callback([{ isIntersecting: true }]);
+  assert.equal(runtime.video.playCalls, 2);
+
+  runtime.mediaQuery.matches = true;
+  runtime.mediaEvents[0]();
+  assert.equal(runtime.video.pauseCalls, 5);
+  assert.equal(runtime.video.attributes.has("autoplay"), false);
+});
+
+test("service worker кэширует poster как CORE-ресурс, но исключает MP4", () => {
+  const serviceWorker = fs.readFileSync(new URL("../sw.js", import.meta.url), "utf8");
+  const coreBlock = serviceWorker.match(/const CORE = \[([\s\S]*?)\n\];/);
+
+  assert.ok(coreBlock, "CORE должен быть объявлен как массив");
+  assert.match(coreBlock[1], /assets\/video-posters\/ai-course-hero-loop\.jpg/);
+  assert.doesNotMatch(coreBlock[1], /assets\/videos\/ai-course-hero-loop\.mp4/);
+});
+
 const source = fs.readFileSync(new URL("../experience-core.js", import.meta.url), "utf8");
 const sandbox = { window: {} };
 sandbox.globalThis = sandbox.window;
