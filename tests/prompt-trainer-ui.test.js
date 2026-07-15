@@ -95,3 +95,30 @@ test("trainer history supports restore, delete and clear after explicit checks",
   assert.match(features, /runTrainer\(null,\s*false\)/);
   assert.match(features, /slice\(0,\s*100\)/);
 });
+
+test("trainer has stable responsive and reduced-motion styles", () => {
+  const css = read("features.css");
+
+  assert.match(css, /\.trainer-controls\s*\{/);
+  assert.match(css, /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /@media\s*\(max-width:\s*760px\)[^]*\.trainer-controls/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)[^]*\.trainer-/);
+  assert.match(css, /\.feat-panel-trainer\s*\{[^]*width:\s*min\(940px,\s*100%\)/);
+  assert.match(css, /\.trainer-result[^}]*min-width:\s*0/);
+});
+
+test("trainer accessibility contract includes labels, live results and keyboard tabs", () => {
+  const features = read("features.js");
+  const css = read("features.css");
+
+  ["sbInput", "sbProfile", "sbErrorCost", "sbDataType", "sbMode"].forEach((id) => {
+    assert.match(features, new RegExp(`(?:for|id)="${id}"`));
+  });
+  assert.match(features, /id="sbResult"[^>]*aria-live="polite"/);
+  assert.match(features, /data-trainer-history-toggle aria-expanded=/);
+  assert.match(features, /role="tablist"/);
+  assert.match(features, /role="tab"/);
+  assert.match(features, /ArrowLeft/);
+  assert.match(features, /ArrowRight/);
+  assert.match(css, /\.trainer-[^{]*:focus-visible/);
+});
