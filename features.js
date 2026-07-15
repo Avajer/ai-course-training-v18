@@ -109,177 +109,242 @@
   }
 
   /* =========================================================================
-     2. ТРЕНАЖЁР ПРОМПТОВ (эвристика, без сети)
+     2. ПРОФЕССИОНАЛЬНЫЙ ОФЛАЙН-ТРЕНАЖЁР ПРОМПТОВ
      ========================================================================= */
-  /* Примечание: \b в JS работает только для ASCII, поэтому для кириллицы
-     границы слов не используем — опираемся на достаточно специфичные основы. */
-  var PROMPT_ELEMENTS = [
-    { key: "role", name: "Роль", hint: "Кем должна выступать модель: «Ты редактор деловых текстов…», «Действуй как аналитик…».",
-      re: /(ты\s+(?:[а-яё]+\s+){0,3}(?:эксперт|аналитик|редактор|корректор|юрист|специалист|консультант|преподавател|методист|менеджер|аудитор|инспектор|секретар|копирайтер|маркетолог|ассистент|помощник|профессионал|переводчик|тренер|наставник|инженер|разработчик|программист|координатор|руководител|эйчар|hr|рекрут)|выступ(?:и|ай)\s+как|в\s+(?:рол[ие]|качестве)\s|действуй\s+как|представь,?\s+что\s+ты)/i },
-    { key: "task", name: "Задача", hint: "Чёткое действие-глагол: проанализируй, составь, проверь, сравни, перепиши, резюмируй.",
-      re: /(проанализируй|составь|напиши|сделай|проверь|сравни|сравнен|подготов|оцени|оцен|сформир|сформулир|выдели|выяв|перепиши|отредактир|резюмир|сократи|переведи|найди|разбер[иё]|разлож|объясни|предлож|сгенерир|создай|разработа|структурир|классифицир|извлеки|верни|построй|рассчита|посчита|опиши|придума|уточни|заполни|дополни|собери|спланир|распиши|помоги)/i },
-    { key: "context", name: "Контекст / цель", hint: "Зачем это нужно и для кого: «цель — …», «аудитория — руководитель», «ситуация: …».",
-      re: /(цел[ьяию]|контекст|ситуац|аудитори|адресат|тема[:\s]|объект[аыи]?\s+сравнен|для\s+(?:кого|чего|рабоч|реш|какого|руководител|клиент|совещан|отч[её]т|задач)|кто\s+будет\s+использ|желаем\S*\s+результат|период\s+прогноза|что\s+(?:известно|неизвестно)|мне\s+нужно|нам\s+нужно|у\s+меня\s+есть|чтобы\s)/i },
-    { key: "data", name: "Исходные данные", hint: "Дай материал или место для него: «текст ниже», «документ: …» или поле в [квадратных скобках].",
-      re: /(\[[^\]]{2,}\]|ниже|следующ(?:ий|ем|его)\s+(?:текст|документ|данны)|документ:|текст:|данные:|данных:|вставь|вставьте|приложен|на\s+основе\s+(?:текста|данных|документа|контекста))/i },
-    { key: "format", name: "Формат результата", hint: "Как оформить ответ: таблица, список, по пунктам, отчёт, JSON, шаблон письма.",
-      re: /(формат|в\s+виде|таблиц|матриц|схем[аыу]|диаграмм|спис(?:ок|ком|ка|ке)|по\s+пунктам|пунктам|структур|markdown|json|отч[её]т|нумерован|маркирован|шаблон|колонк|раздел[аыи]|по\s+шкале|чек-?лист|в\s+\d+\s+част)/i },
-    { key: "style", name: "Стиль / тон", hint: "Тон и язык: деловой, нейтральный, кратко, простыми словами, официальный.",
-      re: /(стил[ье]|тон[ае]?[:\s]|делов|официальн|нейтральн|кратк|лаконичн|простыми\s+словами|простым\s+язык|формальн|дружелюбн|сдержанн|вежлив|без\s+воды|понятн\S*\s+язык)/i },
-    { key: "limits", name: "Ограничения / критерии", hint: "Рамки и контроль фактов: «не придумывай», «до 300 слов», «только проверенное», критерии качества.",
-      re: /(не\s+(?:придумыв|выдумыв|добавляй|фантазир|выдавай|искажай|меняй\s+смысл|раскрыв)|если\s+(?:данных|информац)\S*\s+(?:недостаточно|нет)|ограничен|ограничь|ограничива|объ[её]м|до\s+\d+\s*(?:слов|символов|предложен|строк|вопрос)|не\s+более|только\s|без\s|критери|проверь\s+факт|требу\S+\s+(?:внешней\s+)?проверк|раздели\s+факт|уровень\s+неопредел|что\s+нельзя|укажи\s+(?:допущен|ограничен|уровень|что\s+нужно\s+уточнить))/i }
-  ];
-
-  function analyzePrompt(text) {
-    var t = text || "";
-    var found = PROMPT_ELEMENTS.map(function (el) { return { el: el, ok: el.re.test(t), weight: 12 }; });
-    var okCount = found.filter(function (f) { return f.ok; }).length;
-    var words = (t.trim().match(/\S+/g) || []).length;
-    var chars = t.trim().length;
-    var signals = [
-      {
-        key: "specific",
-        name: "Конкретика",
-        ok: /(\d+|период|срок|критери|порог|пример|раздел|таблиц|контрагент|сумм|документ|аудит|провер)/i.test(t),
-        hint: "Добавьте период, объект, критерии, порог существенности или пример исходных данных."
-      },
-      {
-        key: "verification",
-        name: "Проверяемость",
-        ok: /(проверь|сверь|укажи\s+основан|источник|цитат|факт|гипотез|допущен|неопредел|что\s+проверить)/i.test(t),
-        hint: "Попросите отделить факты от гипотез и указать, что нужно проверить вручную."
-      },
-      {
-        key: "privacy",
-        name: "Безопасность данных",
-        ok: /(обезлич|без\s+персональн|конфиденциальн|служебн|не\s+раскрыв|условн(?:ый|ые)\s+данн|замени\s+данные)/i.test(t),
-        hint: "Если задача рабочая, явно задайте правило: использовать обезличенные или условные данные."
-      },
-      {
-        key: "iteration",
-        name: "Следующий шаг",
-        ok: /(если\s+данных\s+недостаточно|задай\s+вопрос|уточни|сначала\s+спроси|предложи\s+улучшен|после\s+ответа|вариант\s+доработ)/i.test(t),
-        hint: "Добавьте правило: если данных мало, сначала задать уточняющие вопросы."
-      }
-    ];
-    var signalCount = signals.filter(function (s) { return s.ok; }).length;
-    var baseScore = okCount * 12;
-    var signalScore = signalCount * 4;
-    var lengthScore = words >= 25 ? 8 : words >= 12 ? 4 : words >= 5 ? 2 : 0;
-    var pct = Math.min(100, Math.round(baseScore + signalScore + lengthScore));
-    var missing = found.filter(function (f) { return !f.ok; });
-    var missingSignals = signals.filter(function (s) { return !s.ok; });
-    var level = pct >= 86 ? "Сильный" : pct >= 68 ? "Рабочий" : pct >= 45 ? "Черновой" : "Слабый";
-    return { found: found, okCount: okCount, words: words, chars: chars, pct: pct, level: level, missing: missing, signals: signals, signalCount: signalCount, missingSignals: missingSignals };
+  function trainerProfileOptions(trainer) {
+    return '<option value="auto">Автоматически</option>' + Object.keys(trainer.PROFILES).map(function (id) {
+      return '<option value="' + esc(id) + '">' + esc(trainer.PROFILES[id].name) + '</option>';
+    }).join("");
   }
 
-  function trainerVerdict(pct, words) {
-    if (words < 4) return "Слишком коротко — это похоже на вопрос, а не на рабочую инструкцию.";
-    if (pct >= 86) return "Сильный рабочий промпт: задача, рамки и проверка заданы достаточно ясно.";
-    if (pct >= 68) return "Рабочая основа. Добавьте недостающие опоры, чтобы ответ стал стабильнее.";
-    if (pct >= 45) return "Промпт можно использовать как черновик, но результат будет зависеть от догадок ИИ.";
-    return "Промпт расплывчатый. Соберите его по формуле: роль + задача + контекст + данные + формат + стиль + ограничения.";
+  function trainerScoreClass(score) {
+    return score >= 75 ? "is-good" : score >= 45 ? "is-warning" : "is-critical";
   }
 
-  function promptPriority(r) {
-    var priority = [];
-    ["task", "data", "format", "limits", "context", "role", "style"].forEach(function (key) {
-      var miss = r.missing.find(function (f) { return f.el.key === key; });
-      if (miss) priority.push(miss.el.hint);
+  function trainerFindingHtml(items, className, title, emptyText) {
+    var list = items || [];
+    return '<section class="trainer-findings ' + className + '">' +
+      '<h4>' + esc(title) + '</h4>' +
+      (list.length ? '<ul>' + list.map(function (item) {
+        return '<li class="severity-' + esc(item.severity || "info") + '">' +
+          '<b>' + esc(item.title) + '</b>' +
+          (item.detail ? '<span>' + esc(item.detail) + '</span>' : "") +
+          (item.recommendation ? '<small>' + esc(item.recommendation) + '</small>' : "") +
+        '</li>';
+      }).join("") + '</ul>' : '<p class="trainer-empty">' + esc(emptyText) + '</p>') +
+    '</section>';
+  }
+
+  function trainerEvidenceRanges(analysis) {
+    var ranges = [];
+    analysis.dimensions.forEach(function (dimension) {
+      dimension.evidence.forEach(function (evidence) {
+        (evidence.ranges || []).forEach(function (range) { ranges.push(range); });
+      });
     });
-    r.missingSignals.slice(0, 2).forEach(function (s) { priority.push(s.hint); });
-    if (r.words < 12) priority.unshift("Раскройте задачу минимум в 2-3 предложениях: что нужно сделать, с какими данными и для кого.");
-    return priority.slice(0, 5);
+    analysis.issues.concat(analysis.risks).forEach(function (finding) {
+      (finding.ranges || []).forEach(function (range) { ranges.push(range); });
+    });
+    ranges = ranges.map(function (range) {
+      return { start: Math.max(0, range.start), end: Math.max(0, range.end) };
+    }).filter(function (range) { return range.end > range.start; });
+    ranges.sort(function (left, right) { return left.start - right.start || right.end - left.end; });
+    return ranges.filter(function (range, index) {
+      return !ranges.slice(0, index).some(function (previous) {
+        return range.start >= previous.start && range.end <= previous.end;
+      });
+    });
   }
 
-  function buildImprovedPrompt(text, r) {
-    var clean = (text || "").trim();
-    var has = function (key) { return r.found.some(function (f) { return f.el.key === key && f.ok; }); };
-    var lines = [];
-    lines.push(has("role") ? "Роль: используй роль, указанную в моем запросе." : "Роль: выступи как опытный специалист по [укажите сферу: аудит, контроль, финансы, документы].");
-    lines.push(has("context") ? "Контекст: учитывай цель и адресата из моего запроса." : "Контекст: результат нужен для [адресат/ситуация], цель - [что должно быть принято или подготовлено].");
-    lines.push(has("task") ? "Задача: выполни действие, указанное ниже." : "Задача: проанализируй / проверь / составь [что именно нужно сделать].");
-    lines.push(has("data") ? "Исходные данные: используй только данные из запроса ниже." : "Исходные данные: [вставьте обезличенный текст, таблицу, перечень фактов или условия задачи].");
-    lines.push(has("format") ? "Формат: сохрани требуемую структуру ответа." : "Формат результата: таблица или список с разделами: вывод, основания, риски, что проверить, рекомендации.");
-    lines.push(has("style") ? "Стиль: соблюдай заданный тон." : "Стиль: деловой, краткий, без эмоциональных оценок и лишней воды.");
-    lines.push(has("limits") ? "Ограничения: соблюдай указанные рамки и критерии." : "Ограничения: не придумывай факты; если данных недостаточно, укажи, что нужно уточнить; отделяй факт от предположения.");
-    if (!r.signals.find(function (s) { return s.key === "verification"; }).ok) {
-      lines.push("Проверка: в конце добавь список ручных проверок и спорных мест.");
-    }
-    if (!r.signals.find(function (s) { return s.key === "privacy"; }).ok) {
-      lines.push("Безопасность: не используй персональные или конфиденциальные данные; работай с обезличенным примером.");
-    }
-    lines.push("");
-    lines.push("Мой исходный запрос:");
-    lines.push(clean || "[вставьте исходный запрос]");
-    return lines.join("\n");
+  function trainerHighlightedText(text, analysis) {
+    var source = String(text || "");
+    var ranges = trainerEvidenceRanges(analysis);
+    var cursor = 0;
+    var html = "";
+    ranges.forEach(function (range) {
+      var start = Math.max(cursor, Math.min(source.length, range.start));
+      var end = Math.max(start, Math.min(source.length, range.end));
+      if (start > cursor) html += esc(source.slice(cursor, start));
+      if (end > start) html += '<mark>' + esc(source.slice(start, end)) + '</mark>';
+      cursor = Math.max(cursor, end);
+    });
+    if (cursor < source.length) html += esc(source.slice(cursor));
+    return html || '<span class="trainer-empty">Введите промпт, чтобы увидеть найденные признаки.</span>';
   }
 
-  function renderTrainerResult(box, text) {
-    var r = analyzePrompt(text);
-    var priority = promptPriority(r);
-    var improved = buildImprovedPrompt(text, r);
-    box.innerHTML =
-      '<div class="feat-score">' +
-        '<div class="feat-score-top"><span class="feat-section-label">Оценка промпта</span>' +
-        '<span class="feat-score-num">' + r.pct + '%</span></div>' +
-        '<div class="feat-score-meter"><i style="width:' + r.pct + '%"></i></div>' +
-        '<div class="feat-diagnostic-grid">' +
-          '<div><b>' + esc(r.level) + '</b><span>уровень</span></div>' +
-          '<div><b>' + r.okCount + '/7</b><span>опор промпта</span></div>' +
-          '<div><b>' + r.signalCount + '/4</b><span>контроль качества</span></div>' +
-          '<div><b>' + r.words + '</b><span>слов</span></div>' +
+  function trainerDimensionsHtml(dimensions) {
+    return dimensions.map(function (dimension) {
+      return '<div class="trainer-dimension ' + trainerScoreClass(dimension.score) + '">' +
+        '<div><b>' + esc(dimension.name) + '</b><span>' + dimension.score + '/100</span></div>' +
+        '<div class="trainer-dimension-bar" role="img" aria-label="' + esc(dimension.name) + ': ' + dimension.score + ' из 100">' +
+          '<i style="width:' + dimension.score + '%"></i>' +
         '</div>' +
-        '<p class="feat-verdict">' + esc(trainerVerdict(r.pct, r.words)) + '</p>' +
-        '<div class="feat-elements">' +
-          r.found.map(function (f) {
-            return '<div class="feat-element ' + (f.ok ? "ok" : "miss") + '">' +
-              '<span class="mark">' + (f.ok ? "✓" : "—") + '</span>' +
-              '<div><b>' + esc(f.el.name) + '</b>' + (f.ok ? "" : '<span>' + esc(f.el.hint) + '</span>') + '</div>' +
-            '</div>';
-          }).join("") +
-        '</div>' +
-        '<div class="feat-quality">' +
-          r.signals.map(function (s) {
-            return '<div class="feat-quality-item ' + (s.ok ? "ok" : "miss") + '">' +
-              '<b>' + (s.ok ? "✓ " : "— ") + esc(s.name) + '</b>' +
-              '<span>' + esc(s.ok ? "Учтено в запросе." : s.hint) + '</span>' +
-            '</div>';
-          }).join("") +
-        '</div>' +
-        '<div class="feat-suggestion"><span class="feat-section-label">Что улучшить в первую очередь</span>' +
-          '<ol>' + priority.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join("") + '</ol>' +
-        '</div>' +
-        '<div class="feat-improved">' +
-          '<div class="feat-score-top"><span class="feat-section-label">Улучшенная заготовка</span><button class="feat-mini-btn" type="button" data-copy-improved>Копировать</button></div>' +
-          '<pre>' + esc(improved) + '</pre>' +
-        '</div>' +
+        '<small>' + esc(dimension.recommendation) + '</small>' +
       '</div>';
-    var copy = box.querySelector("[data-copy-improved]");
-    if (copy) copy.addEventListener("click", function () { copyText(improved); toast("Улучшенный промпт скопирован."); });
+    }).join("");
+  }
+
+  function trainerComparisonHtml(before, after, comparison) {
+    var delta = function (value) { return (value > 0 ? "+" : "") + value; };
+    var changed = comparison.dimensionDeltas.filter(function (item) { return item.delta !== 0; }).slice(0, 6);
+    return '<section class="trainer-compare" aria-label="Сравнение до и после">' +
+      '<h4>До улучшения и после</h4>' +
+      '<div class="trainer-compare-grid">' +
+        '<div><span>До улучшения</span><b>' + before.qualityScore + '</b><small>качество · ' + before.safetyScore + ' безопасность</small></div>' +
+        '<div><span>После улучшения</span><b>' + after.qualityScore + '</b><small>качество · ' + after.safetyScore + ' безопасность</small></div>' +
+        '<div><span>Изменение</span><b>' + delta(comparison.qualityDelta) + '</b><small>' + delta(comparison.safetyDelta) + ' к безопасности</small></div>' +
+      '</div>' +
+      (changed.length ? '<ul>' + changed.map(function (item) {
+        return '<li><span>' + esc(item.name) + '</span><b>' + item.before + ' → ' + item.after + ' (' + delta(item.delta) + ')</b></li>';
+      }).join("") + '</ul>' : '<p class="trainer-empty">Оценки измерений пока не изменились.</p>') +
+    '</section>';
+  }
+
+  function renderTrainerResult(box, trainer, view, actions) {
+    var analysis = view.analysis;
+    var commentary = analysis.commentary;
+    var profile = trainer.PROFILES[analysis.profile];
+    var selectedText = view.improved[view.variant];
+    box.className = "feat-sandbox-result trainer-result " + (view.mode === "compact" ? "is-compact" : "is-educational");
+    box.innerHTML =
+      '<section class="trainer-overview">' +
+        '<div class="trainer-score-grid">' +
+          '<div class="trainer-score ' + trainerScoreClass(analysis.qualityScore) + '"><span>Качество</span><b>' + analysis.qualityScore + '</b><small>' + esc(analysis.level) + '</small></div>' +
+          '<div class="trainer-score ' + trainerScoreClass(analysis.safetyScore) + '"><span>Безопасность</span><b>' + analysis.safetyScore + '</b><small>' + (analysis.risks.length ? "есть риски" : "критичных рисков нет") + '</small></div>' +
+          '<div class="trainer-score"><span>Профиль</span><b class="trainer-profile-name">' + esc(profile.name) + '</b><small>' + (analysis.classification.overridden ? "выбран вручную" : "определен автоматически") + '</small></div>' +
+        '</div>' +
+      '</section>' +
+      '<section class="trainer-commentary">' +
+        '<h4>Комментарий по контексту</h4>' +
+        '<p>' + esc(commentary.summary) + '</p>' +
+        '<p>' + esc(commentary.strengthsText) + '</p>' +
+        '<p><b>' + esc(commentary.priorityText) + '</b></p>' +
+        '<p>' + esc(commentary.nextStepText) + '</p>' +
+      '</section>' +
+      '<section class="trainer-dimensions"><h4>Измерения качества</h4>' + trainerDimensionsHtml(analysis.dimensions) + '</section>' +
+      '<section class="trainer-highlight"><h4>Признаки в исходном промпте</h4><p>' + trainerHighlightedText(view.source, analysis) + '</p></section>' +
+      '<div class="trainer-findings-grid">' +
+        trainerFindingHtml(analysis.strengths, "trainer-strengths", "Сильные стороны", "Пока нет измерений с устойчивыми признаками.") +
+        trainerFindingHtml(analysis.issues, "trainer-issues", "Приоритетные улучшения", "Существенных пробелов не найдено.") +
+        trainerFindingHtml(analysis.risks, "trainer-risks", "Риски", "Критичных рисков не найдено.") +
+      '</div>' +
+      '<section class="trainer-improved">' +
+        '<div class="trainer-improved-head"><h4>Улучшенный промпт</h4>' +
+          '<div class="trainer-improve-tabs" role="tablist" aria-label="Версия улучшенного промпта">' +
+            '<button type="button" role="tab" data-trainer-version="concise" aria-selected="' + (view.variant === "concise") + '" tabindex="' + (view.variant === "concise" ? "0" : "-1") + '">Краткая версия</button>' +
+            '<button type="button" role="tab" data-trainer-version="full" aria-selected="' + (view.variant === "full") + '" tabindex="' + (view.variant === "full" ? "0" : "-1") + '">Полная версия</button>' +
+          '</div>' +
+        '</div>' +
+        '<pre role="tabpanel" tabindex="0">' + esc(selectedText) + '</pre>' +
+        '<div class="trainer-improved-actions">' +
+          '<button class="feat-mini-btn" type="button" data-trainer-copy>Копировать</button>' +
+          '<button class="feat-mini-btn" type="button" data-trainer-replace>Заменить исходный</button>' +
+          '<button class="feat-mini-btn" type="button" data-trainer-recheck>Проверить снова</button>' +
+        '</div>' +
+      '</section>' +
+      trainerComparisonHtml(view.compareBefore, view.compareAfter, view.comparison);
+
+    $all("[data-trainer-version]", box).forEach(function (tab) {
+      tab.addEventListener("click", function () { actions.selectVersion(tab.getAttribute("data-trainer-version")); });
+      tab.addEventListener("keydown", function (event) {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        actions.selectVersion(view.variant === "concise" ? "full" : "concise", true);
+      });
+    });
+    $("[data-trainer-copy]", box).addEventListener("click", function () {
+      copyText(selectedText);
+      toast("Улучшенный промпт скопирован.");
+    });
+    $("[data-trainer-replace]", box).addEventListener("click", actions.replace);
+    $("[data-trainer-recheck]", box).addEventListener("click", actions.recheck);
   }
 
   function openSandbox(prefill) {
     var content =
-      '<div>' +
-        '<span class="feat-section-label">Ваш промпт</span>' +
-        '<textarea class="feat-field feat-prompt-field" id="sbInput" placeholder="Опишите рабочую задачу: роль, контекст, исходные данные, формат результата и ограничения…">' + esc(prefill || "") + '</textarea>' +
+      '<div class="trainer-input-block">' +
+        '<label class="feat-section-label" for="sbInput">Ваш промпт</label>' +
+        '<textarea class="feat-field feat-prompt-field" id="sbInput" placeholder="Опишите рабочую задачу, исходные данные, требования и ограничения.">' + esc(prefill || "") + '</textarea>' +
       '</div>' +
+      '<div class="trainer-controls">' +
+        '<label for="sbProfile"><span>Профиль задачи</span><select class="feat-input" id="sbProfile"></select></label>' +
+        '<label for="sbErrorCost"><span>Цена ошибки</span><select class="feat-input" id="sbErrorCost"><option value="low">Низкая</option><option value="medium" selected>Средняя</option><option value="high">Высокая</option></select></label>' +
+        '<label for="sbDataType"><span>Тип данных</span><select class="feat-input" id="sbDataType"><option value="public">Публичные</option><option value="internal" selected>Внутренние</option><option value="personal">Персональные</option><option value="sensitive">Чувствительные</option></select></label>' +
+        '<label for="sbMode"><span>Режим объяснения</span><select class="feat-input" id="sbMode"><option value="educational" selected>Подробный</option><option value="compact">Компактный</option></select></label>' +
+      '</div>' +
+      '<p class="trainer-privacy-note">Анализ выполняется на этом устройстве. Текст промпта не отправляется в сеть.</p>' +
       '<div class="feat-actions">' +
         '<button class="feat-btn" id="sbCheck" type="button">Проверить и улучшить</button>' +
-        '<button class="feat-btn sec" id="sbSave" type="button">★ В мою библиотеку</button>' +
+        '<button class="feat-btn sec" id="sbSave" type="button">В мою библиотеку</button>' +
       '</div>' +
-      '<div id="sbResult" class="feat-sandbox-result"></div>';
+      '<div id="sbResult" class="feat-sandbox-result" aria-live="polite"></div>' +
+      '<section id="sbHistory" class="trainer-history" aria-label="История проверок"></section>';
 
     openPanel({
-      title: "🧪 Песочница промптов",
-      subtitle: "Офлайн-проверка промпта: структура, конкретика, безопасность и проверяемость. Ничего не отправляется во внешний сервис.",
+      title: "Профессиональный тренажер промптов",
+      subtitle: "Оценка качества и безопасности для рабочих задач.",
       content: content,
+      panelClass: "feat-panel-trainer",
       onMount: function (root) {
         var input = $("#sbInput", root);
-        $("#sbCheck", root).addEventListener("click", function () { renderTrainerResult($("#sbResult", root), input.value); });
+        var result = $("#sbResult", root);
+        var trainer = window.PromptTrainer;
+        if (!trainer) {
+          result.innerHTML = '<p class="feat-verdict">Тренажер временно недоступен. Остальные разделы курса продолжают работать.</p>';
+          return;
+        }
+        $("#sbProfile", root).innerHTML = trainerProfileOptions(trainer);
+        var session = { variant: "concise", current: null };
+
+        function currentOptions() {
+          return {
+            profile: $("#sbProfile", root).value,
+            errorCost: $("#sbErrorCost", root).value,
+            dataType: $("#sbDataType", root).value
+          };
+        }
+
+        function runTrainer(compareFrom) {
+          var source = input.value;
+          var options = currentOptions();
+          var analysis = trainer.analyze(source, options);
+          var improved = trainer.improve(source, analysis, options);
+          var preview = trainer.analyze(improved[session.variant], options);
+          var before = compareFrom || analysis;
+          var after = compareFrom ? analysis : preview;
+          var view = {
+            source: source,
+            options: options,
+            mode: $("#sbMode", root).value,
+            variant: session.variant,
+            analysis: analysis,
+            improved: improved,
+            compareBefore: before,
+            compareAfter: after,
+            comparison: trainer.compare(before, after)
+          };
+          session.current = view;
+          renderTrainerResult(result, trainer, view, {
+            selectVersion: function (variant, focusTab) {
+              session.variant = variant;
+              runTrainer(null);
+              if (focusTab) $("[data-trainer-version=\"" + variant + "\"]", result).focus();
+            },
+            replace: function () {
+              input.value = session.current.improved[session.variant];
+              input.focus();
+              toast("Исходный промпт заменен улучшенной версией. Нажмите «Проверить снова».");
+            },
+            recheck: function () { runTrainer(session.current.analysis); }
+          });
+        }
+
+        $("#sbCheck", root).addEventListener("click", function () { runTrainer(null); });
         $("#sbSave", root).addEventListener("click", function () { saveToMyLib(input.value); });
-        if (prefill) renderTrainerResult($("#sbResult", root), prefill);
+        ["#sbProfile", "#sbErrorCost", "#sbDataType", "#sbMode"].forEach(function (selector) {
+          $(selector, root).addEventListener("change", function () { if (session.current) runTrainer(null); });
+        });
+        if (prefill) runTrainer(null);
       }
     });
   }
