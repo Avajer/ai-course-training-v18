@@ -36,6 +36,23 @@
     if (hero) hero.innerHTML = brandLogoMarkup(false);
   }
 
+  function configureHeroVideo() {
+    const video = $("#heroIntroVideo");
+    if (!video) return;
+    const preference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    const syncPlayback = () => {
+      if (preference?.matches) {
+        video.pause();
+        video.removeAttribute("autoplay");
+        return;
+      }
+      video.setAttribute("autoplay", "");
+      video.play().catch(() => {});
+    };
+    syncPlayback();
+    preference?.addEventListener?.("change", syncPlayback);
+  }
+
   function renderHeroCycle() {
     const target = $("#heroCycle");
     if (!target) return;
@@ -233,6 +250,7 @@
 
   function init() {
     renderBrandLogos();
+    configureHeroVideo();
     renderHeroCycle();
     enhanceSidebar();
     enhanceLesson();
@@ -241,6 +259,6 @@
     observeContent();
   }
 
-  window.CourseExperience = { init, renderBrandLogos, renderHeroCycle, enhanceSidebar, enhanceLesson, enhancePromptLibrary, renderLessonProgress, announce };
+  window.CourseExperience = { init, renderBrandLogos, configureHeroVideo, renderHeroCycle, enhanceSidebar, enhanceLesson, enhancePromptLibrary, renderLessonProgress, announce };
   init();
 })();
