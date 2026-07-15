@@ -231,6 +231,8 @@ test("service worker кэширует poster, а видео обслуживае
   const videoBranch = serviceWorker.match(/if \(sameOrigin && url\.pathname\.includes\("\/assets\/videos\/"\)\) \{([\s\S]*?)\n  \}/);
 
   assert.ok(coreBlock, "CORE должен быть объявлен как массив");
+  assert.match(serviceWorker, /caches\.open\(CACHE\)[\s\S]*cache\.addAll\(CORE\)/);
+  assert.doesNotMatch(serviceWorker, /Promise\.allSettled\(CORE/);
   assert.match(coreBlock[1], /assets\/video-posters\/ai-course-hero-loop\.jpg/);
   assert.doesNotMatch(coreBlock[1], /assets\/videos\/ai-course-hero-loop\.mp4/);
   assert.ok(videoBranch, "для /assets/videos/ должна быть отдельная ветка");
@@ -249,8 +251,16 @@ test("номер сборки синхронизирован в странице
   const workerVersion = worker.match(/CACHE\s*=\s*"ai-course-v(\d+)"/)?.[1];
 
   assert.ok(pageVersion);
+  assert.equal(pageVersion, "71");
+  assert.match(page, /prompt-trainer-core\.js\?v=71/);
+  assert.match(page, /features\.js\?v=71/);
+  assert.match(page, /aiCourseSwReloadedV71/);
+  assert.match(course, /COURSE_BUILD\s*=\s*"v71"/);
+  assert.match(features, /COURSE_VERSION\s*=\s*"v71"/);
+  assert.match(worker, /CACHE\s*=\s*"ai-course-v71"/);
+  assert.match(worker, /prompt-trainer-core\.js\?v=71/);
   assert.deepEqual([courseVersion, featuresVersion, workerVersion], [pageVersion, pageVersion, pageVersion]);
-  assert.equal((worker.match(new RegExp(`"\\./[^\"]+\\?v=${pageVersion}"`, "g")) || []).length, 7);
+  assert.equal((worker.match(new RegExp(`"\\./[^\"]+\\?v=${pageVersion}"`, "g")) || []).length, 8);
 });
 
 const source = fs.readFileSync(new URL("../experience-core.js", import.meta.url), "utf8");

@@ -1,19 +1,20 @@
 /* ИИ-практикум — service worker (офлайн-кэш для GitHub Pages) */
-const CACHE = "ai-course-v70";
+const CACHE = "ai-course-v71";
 
 /* Базовые файлы курса. Пути относительные — работают и на github.io/<repo>/.
-   URL с ?v=70 совпадают с тем, что запрашивает index.html (кэш по точному URL).
+   URL с ?v=71 совпадают с тем, что запрашивает index.html (кэш по точному URL).
    Видео намеренно не предзагружаются: они тяжелые и должны открываться по требованию. */
 const CORE = [
   "./",
   "./index.html",
-  "./styles.css?v=70",
-  "./features.css?v=70",
-  "./experience.css?v=70",
-  "./experience-core.js?v=70",
-  "./script.js?v=70",
-  "./experience.js?v=70",
-  "./features.js?v=70",
+  "./styles.css?v=71",
+  "./features.css?v=71",
+  "./experience.css?v=71",
+  "./experience-core.js?v=71",
+  "./script.js?v=71",
+  "./experience.js?v=71",
+  "./prompt-trainer-core.js?v=71",
+  "./features.js?v=71",
   "./manifest.webmanifest",
   "./admin.html",
   "./assets/icon.svg",
@@ -27,7 +28,7 @@ const CORE = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) =>
-      Promise.allSettled(CORE.map((url) => cache.add(url)))
+      cache.addAll(CORE)
     ).then(() => self.skipWaiting())
   );
 });

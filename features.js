@@ -9,7 +9,7 @@
 (function () {
   "use strict";
 
-  var COURSE_VERSION = "v70";
+  var COURSE_VERSION = "v71";
   var LS = {
     mylib: "aiCourseMyPrompts",
     trainerHistory: "aiCoursePromptTrainerHistoryV1",
