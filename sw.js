@@ -1,26 +1,27 @@
 /* ИИ-практикум — service worker (офлайн-кэш для GitHub Pages) */
-const CACHE = "ai-course-v65";
+const CACHE = "ai-course-v66";
 
 /* Базовые файлы курса. Пути относительные — работают и на github.io/<repo>/.
-   URL с ?v=65 совпадают с тем, что запрашивает index.html (кэш по точному URL).
+   URL с ?v=66 совпадают с тем, что запрашивает index.html (кэш по точному URL).
    Видео намеренно не предзагружаются: они тяжелые и должны открываться по требованию. */
 const CORE = [
   "./",
   "./index.html",
-  "./styles.css?v=65",
-  "./features.css?v=65",
-  "./experience.css?v=65",
-  "./experience-core.js?v=65",
-  "./script.js?v=65",
-  "./experience.js?v=65",
-  "./features.js?v=65",
+  "./styles.css?v=66",
+  "./features.css?v=66",
+  "./experience.css?v=66",
+  "./experience-core.js?v=66",
+  "./script.js?v=66",
+  "./experience.js?v=66",
+  "./features.js?v=66",
   "./manifest.webmanifest",
   "./admin.html",
   "./assets/icon.svg",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
   "./assets/apple-touch-icon.png",
-  "./assets/favicon-32.png"
+  "./assets/favicon-32.png",
+  "./assets/video-posters/ai-course-hero-loop.jpg"
 ];
 
 self.addEventListener("install", (event) => {
