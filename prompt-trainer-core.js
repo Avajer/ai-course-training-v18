@@ -12,7 +12,7 @@
     sentences = sentences.map(function (item) { return item.trim(); }).filter(Boolean);
     var sections = original.split(/\n+/).map(function (item) { return item.trim(); }).filter(Boolean);
     return { original: original, normalized: normalized, tokens: tokens, sentences: sentences,
-      sections: sections, wordCount: tokens.length + Math.max(0, sentences.length - 1), charCount: original.length };
+      sections: sections, wordCount: tokens.length, charCount: original.length };
   }
 
   function analyze(text, options) {

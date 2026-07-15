@@ -15,6 +15,6 @@ test("normalizes Russian prompt without losing the original", () => {
   const trainer = loadTrainer();
   const result = trainer.normalize("  Проверь документ.\nУкажи риски!  ");
   assert.equal(result.original, "Проверь документ.\nУкажи риски!");
-  assert.equal(result.wordCount, 5);
+  assert.equal(result.wordCount, 4);
   assert.deepEqual(Array.from(result.sentences), ["Проверь документ.", "Укажи риски!"]);
 });
