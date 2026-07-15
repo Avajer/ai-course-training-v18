@@ -12,6 +12,7 @@
   var COURSE_VERSION = "v70";
   var LS = {
     mylib: "aiCourseMyPrompts",
+    trainerHistory: "aiCoursePromptTrainerHistoryV1",
     tour: "aiCourseTourSeenV1",
     pretest: "aiCoursePretestDone",
     lastModule: "aiCourseLastModule"
@@ -200,6 +201,81 @@
     '</section>';
   }
 
+  function trainerHistoryRecords() {
+    var history = lsGet(uKey(LS.trainerHistory), []);
+    return Array.isArray(history) ? history : [];
+  }
+
+  function saveTrainerHistory(view) {
+    var history = lsGet(uKey(LS.trainerHistory), []);
+    history.unshift({
+      id: Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      createdAt: new Date().toISOString(),
+      source: view.source,
+      options: {
+        profile: view.options.profile,
+        errorCost: view.options.errorCost,
+        dataType: view.options.dataType
+      },
+      profile: view.analysis.profile,
+      qualityScore: view.analysis.qualityScore,
+      safetyScore: view.analysis.safetyScore,
+      commentary: view.analysis.commentary,
+      improved: view.improved
+    });
+    lsSet(uKey(LS.trainerHistory), history.slice(0, 20));
+  }
+
+  function renderTrainerHistory(host, trainer, state, restoreRecord) {
+    var history = trainerHistoryRecords();
+    var expanded = Boolean(state.historyExpanded);
+    host.innerHTML =
+      '<div class="trainer-history-head">' +
+        '<button type="button" data-trainer-history-toggle aria-expanded="' + expanded + '" aria-controls="trainerHistoryList">История проверок <span>' + history.length + '/20</span></button>' +
+        (history.length ? '<button class="feat-mini-btn danger" type="button" data-trainer-history-clear>Очистить</button>' : "") +
+      '</div>' +
+      '<div id="trainerHistoryList" class="trainer-history-list"' + (expanded ? "" : " hidden") + '>' +
+        (history.length ? history.map(function (record) {
+          var profile = trainer.PROFILES[record.profile];
+          var date = new Date(record.createdAt);
+          var dateText = Number.isNaN(date.getTime()) ? "Дата неизвестна" : date.toLocaleString("ru-RU");
+          return '<article class="trainer-history-item">' +
+            '<div><b>' + esc(profile ? profile.name : record.profile) + '</b><time datetime="' + esc(record.createdAt) + '">' + esc(dateText) + '</time></div>' +
+            '<p>' + esc(String(record.source || "").slice(0, 100)) + (String(record.source || "").length > 100 ? "…" : "") + '</p>' +
+            '<div class="trainer-history-meta"><span>Качество ' + Number(record.qualityScore || 0) + '</span><span>Безопасность ' + Number(record.safetyScore || 0) + '</span></div>' +
+            '<div class="trainer-history-actions">' +
+              '<button class="feat-mini-btn" type="button" data-trainer-history-restore="' + esc(record.id) + '">Восстановить</button>' +
+              '<button class="feat-mini-btn danger" type="button" data-trainer-history-delete="' + esc(record.id) + '">Удалить</button>' +
+            '</div>' +
+          '</article>';
+        }).join("") : '<p class="trainer-empty">После явной проверки здесь появятся последние 20 промптов.</p>') +
+      '</div>';
+
+    $("[data-trainer-history-toggle]", host).addEventListener("click", function (event) {
+      state.historyExpanded = !state.historyExpanded;
+      event.currentTarget.setAttribute("aria-expanded", String(state.historyExpanded));
+      $("#trainerHistoryList", host).hidden = !state.historyExpanded;
+    });
+    host.onclick = function (event) {
+      var restore = event.target.closest("[data-trainer-history-restore]");
+      var remove = event.target.closest("[data-trainer-history-delete]");
+      var clear = event.target.closest("[data-trainer-history-clear]");
+      if (restore) {
+        var record = history.find(function (item) { return String(item.id) === restore.getAttribute("data-trainer-history-restore"); });
+        if (record) restoreRecord(record);
+      }
+      if (remove) {
+        var id = remove.getAttribute("data-trainer-history-delete");
+        lsSet(uKey(LS.trainerHistory), history.filter(function (item) { return String(item.id) !== id; }));
+        renderTrainerHistory(host, trainer, state, restoreRecord);
+      }
+      if (clear && window.confirm("Очистить личную историю проверок?")) {
+        lsSet(uKey(LS.trainerHistory), []);
+        renderTrainerHistory(host, trainer, state, restoreRecord);
+      }
+    };
+  }
+
   function renderTrainerResult(box, trainer, view, actions) {
     var analysis = view.analysis;
     var commentary = analysis.commentary;
@@ -294,7 +370,8 @@
           return;
         }
         $("#sbProfile", root).innerHTML = trainerProfileOptions(trainer);
-        var session = { variant: "concise", current: null };
+        var historyHost = $("#sbHistory", root);
+        var session = { variant: "concise", current: null, historyExpanded: false };
 
         function currentOptions() {
           return {
@@ -304,7 +381,25 @@
           };
         }
 
-        function runTrainer(compareFrom) {
+        function restoreHistoryRecord(record) {
+          input.value = record.source || "";
+          var restoredOptions = record.options || {};
+          ["profile", "errorCost", "dataType"].forEach(function (name) {
+            var control = $("#sb" + name.charAt(0).toUpperCase() + name.slice(1), root);
+            if (control && $all("option", control).some(function (option) { return option.value === restoredOptions[name]; })) {
+              control.value = restoredOptions[name];
+            }
+          });
+          session.variant = "concise";
+          runTrainer(null, false);
+          input.focus();
+        }
+
+        function refreshHistory() {
+          renderTrainerHistory(historyHost, trainer, session, restoreHistoryRecord);
+        }
+
+        function runTrainer(compareFrom, addToHistory) {
           var source = input.value;
           var options = currentOptions();
           var analysis = trainer.analyze(source, options);
@@ -324,10 +419,14 @@
             comparison: trainer.compare(before, after)
           };
           session.current = view;
+          if (addToHistory) {
+            saveTrainerHistory(view);
+            refreshHistory();
+          }
           renderTrainerResult(result, trainer, view, {
             selectVersion: function (variant, focusTab) {
               session.variant = variant;
-              runTrainer(null);
+              runTrainer(null, false);
               if (focusTab) $("[data-trainer-version=\"" + variant + "\"]", result).focus();
             },
             replace: function () {
@@ -335,16 +434,17 @@
               input.focus();
               toast("Исходный промпт заменен улучшенной версией. Нажмите «Проверить снова».");
             },
-            recheck: function () { runTrainer(session.current.analysis); }
+            recheck: function () { runTrainer(session.current.analysis, true); }
           });
         }
 
-        $("#sbCheck", root).addEventListener("click", function () { runTrainer(null); });
+        $("#sbCheck", root).addEventListener("click", function () { runTrainer(null, true); });
         $("#sbSave", root).addEventListener("click", function () { saveToMyLib(input.value); });
         ["#sbProfile", "#sbErrorCost", "#sbDataType", "#sbMode"].forEach(function (selector) {
-          $(selector, root).addEventListener("change", function () { if (session.current) runTrainer(null); });
+          $(selector, root).addEventListener("change", function () { if (session.current) runTrainer(null, false); });
         });
-        if (prefill) runTrainer(null);
+        refreshHistory();
+        if (prefill) runTrainer(null, false);
       }
     });
   }

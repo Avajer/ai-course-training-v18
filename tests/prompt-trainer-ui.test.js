@@ -70,3 +70,28 @@ test("trainer has a graceful fallback when the shared core is unavailable", () =
   assert.match(features, /if \(!trainer\)/);
   assert.match(features, /Тренажер временно недоступен\. Остальные разделы курса продолжают работать\./);
 });
+
+test("trainer history is participant-scoped and capped", () => {
+  const features = read("features.js");
+
+  assert.match(features, /trainerHistory:\s*"aiCoursePromptTrainerHistoryV1"/);
+  assert.match(features, /lsGet\(uKey\(LS\.trainerHistory\),\s*\[\]\)/);
+  assert.match(features, /slice\(0,\s*20\)/);
+  assert.match(features, /createdAt:/);
+  assert.match(features, /qualityScore:/);
+  assert.match(features, /safetyScore:/);
+  assert.match(features, /commentary:/);
+  assert.match(features, /improved:/);
+});
+
+test("trainer history supports restore, delete and clear after explicit checks", () => {
+  const features = read("features.js");
+
+  assert.match(features, /data-trainer-history-restore/);
+  assert.match(features, /data-trainer-history-delete/);
+  assert.match(features, /data-trainer-history-clear/);
+  assert.match(features, /data-trainer-history-toggle/);
+  assert.match(features, /runTrainer\(null,\s*true\)/);
+  assert.match(features, /runTrainer\(null,\s*false\)/);
+  assert.match(features, /slice\(0,\s*100\)/);
+});
